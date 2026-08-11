@@ -28,7 +28,7 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 4 of 14 — workspace, core types, DeepSeek types, SSE parser, and the tool layer — complete.**
+**Milestone 5 of 14 — workspace, core types, DeepSeek types, SSE parser, tools, and the agent loop — complete.**
 
 Implemented:
 
@@ -37,29 +37,23 @@ Implemented:
 - Provider-independent conversation types: `Message`, `UserMessage`,
   `AssistantMessage`, `ToolCall`, `ToolResultMessage`, `ToolDefinition`
 - `reasoning_content` treated as a first-class part of assistant messages
-  (it survives serialization by design)
+  (it survives streaming, tool loops, and serialization by design)
 - Typed events: `ModelEvent` (streaming model output) and `AgentEvent`
   (the contract between the agent and any frontend)
-- Core error types: `ToolError`, `Cancelled`
-- DeepSeek request serialization (`DeepSeekRequest`, explicit wire types,
-  `thinking` parameter, tool-call arguments as JSON strings)
-- DeepSeek response types: `ChatResponse`, `StreamChunk`, `Delta`,
-  `DeepSeekUsage`, `ApiErrorBody`
-- `ModelConfig` (model, thinking mode, base URL) with official-API defaults
-- SSE parser: incremental framing (`SseParser`, safe under arbitrary byte
-  fragmentation, CRLF + multi-line data + comments), payload interpretation
-  (`[DONE]` / chunk), and `ChunkTranslator` (chunks → `ModelEvent`s,
-  tool calls tracked by index)
-- `DeepSeekError`: SSE, protocol, cancellation (HTTP/API variants land
-  with the client)
-- Tool layer: `Tool` trait, `ToolContext` (workspace boundary +
-  cancellation), `ToolRegistry` (register, definitions, resolve, execute),
-  `parse_tool_args`
-- Unit tests plus fixture-based integration tests against two recorded
-  DeepSeek streams (`tool_turn`, `final_answer`), and registry tests with
-  fake tools
+- Core error types: `ToolError`, `AgentError`, `Cancelled`
+- DeepSeek request serialization, response types, `ModelConfig`
+- SSE parser: `SseParser` framing, payload interpretation, `ChunkTranslator`
+- `DeepSeekError`: SSE, protocol, cancellation
+- Tool layer: `Tool` trait, `ToolContext`, `ToolRegistry`, `parse_tool_args`
+- Agent loop: `AgentHarness` (transcript, model turns, tool execution,
+  streaming `AgentEvent`s, cancellation) over the small `ModelClient` seam
+- `AssistantBuilder`: accumulates stream deltas into complete messages,
+  parsing tool-call arguments only when complete
+- Unit tests plus fixture-based SSE tests and fake-model integration tests
+  proving `model → tool → result → model → final answer` end to end,
+  including reasoning survival and cancellation
 
-Not yet implemented: the DeepSeek HTTP client, the agent loop, the CLI,
+Not yet implemented: the DeepSeek HTTP client, the coding tools, the CLI,
 session persistence. See [Roadmap](#roadmap).
 
 ## Installation
@@ -200,10 +194,10 @@ Implemented:
 - [x] **M2** DeepSeek request serialization and response types
 - [x] **M3** SSE streaming parser (fixture-based tests)
 - [x] **M4** `Tool` trait and `ToolRegistry` (fake tools first)
+- [x] **M5** Agent/tool-call loop against a fake model
 
 Planned, in order:
 
-- [ ] **M5** Agent/tool-call loop against a fake model
 - [ ] **M6** Real DeepSeek client — `vava -p "say hello"` works
 - [ ] **M7** `read` tool
 - [ ] **M8** `write`, `edit`, `bash` tools; a real coding task works

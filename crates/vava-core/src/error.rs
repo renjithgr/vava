@@ -20,10 +20,24 @@
 
 use thiserror::Error;
 
+use crate::model_client::BoxedError;
+
 /// A marker for an operation cancelled by the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("operation cancelled")]
 pub struct Cancelled;
+
+/// Errors raised by the agent harness while running a conversation.
+#[derive(Debug, Error)]
+pub enum AgentError {
+    /// The operation was cancelled by the user.
+    #[error("operation cancelled")]
+    Cancelled,
+
+    /// The model client failed (HTTP, API, protocol, ...).
+    #[error("model client error: {0}")]
+    Client(BoxedError),
+}
 
 /// Errors raised by the tool layer: resolving a tool, validating its
 /// arguments, or executing it.
@@ -64,6 +78,26 @@ mod tests {
     fn cancelled_displays_cleanly() {
         assert_eq!(Cancelled.to_string(), "operation cancelled");
     }
+
+    #[test]
+    fn agent_error_displays() {
+        assert_eq!(AgentError::Cancelled.to_string(), "operation cancelled");
+        assert_eq!(
+            AgentError::Client(Box::new(SimpleError)).to_string(),
+            "model client error: kaput"
+        );
+    }
+
+    #[derive(Debug)]
+    struct SimpleError;
+
+    impl std::fmt::Display for SimpleError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("kaput")
+        }
+    }
+
+    impl std::error::Error for SimpleError {}
 
     #[test]
     fn tool_error_displays_are_helpful() {

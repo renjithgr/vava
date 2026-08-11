@@ -267,3 +267,41 @@ async fn cancelling_during_a_bash_call_kills_the_process() {
     let result = handle.await.unwrap();
     assert!(matches!(result, Err(AgentError::Cancelled)));
 }
+
+/// `CodingSession` discovers the repository root from a nested directory,
+/// loads `AGENTS.md`, and runs the tools against that root.
+#[tokio::test]
+async fn coding_session_discovers_root_and_agmd() {
+    let repo = TempRepo::new();
+    std::fs::create_dir_all(repo.path().join(".git")).unwrap();
+    std::fs::write(repo.path().join("AGENTS.md"), "Use tabs.\n").unwrap();
+    std::fs::write(repo.path().join("notes.txt"), "hello from the repo\n").unwrap();
+    std::fs::create_dir_all(repo.path().join("nested/deep")).unwrap();
+
+    let model = ScriptedModel::new(vec![
+        tool_turn("c1", "read", r#"{"path":"notes.txt"}"#),
+        vec![
+            ModelEvent::TextDelta("Got it.".into()),
+            ModelEvent::Finished,
+        ],
+    ]);
+    let client: Arc<dyn ModelClient> = Arc::new(model);
+    let mut session =
+        vava_coding::CodingSession::open(client, &repo.path().join("nested/deep")).unwrap();
+
+    // The session root is the repository root, not the nested directory.
+    assert_eq!(session.root(), repo.path());
+    assert_eq!(session.context().agents_md.as_deref(), Some("Use tabs.\n"));
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let result = session.prompt("read notes".into(), tx).await;
+    result.unwrap();
+    while rx.recv().await.is_some() {}
+
+    // The read tool resolved `notes.txt` against the discovered root.
+    let Message::ToolResult(tool_result) = &session.messages()[2] else {
+        panic!("expected a tool result message");
+    };
+    assert!(!tool_result.is_error, "{}", tool_result.content);
+    assert!(tool_result.content.contains("hello from the repo"));
+}

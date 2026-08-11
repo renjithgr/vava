@@ -15,7 +15,6 @@ use clap::Parser;
 use secrecy::SecretString;
 use tokio::sync::mpsc;
 
-use vava_core::{AgentHarness, ToolRegistry};
 use vava_deepseek::{DeepSeekClient, ModelConfig};
 
 /// Command-line arguments for `vava`.
@@ -77,15 +76,11 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
     let client = DeepSeekClient::new(SecretString::from(api_key), config);
 
     let root = cli.cwd.clone().unwrap_or(std::env::current_dir()?);
-    let system = system_prompt(&root);
-
-    let mut registry = ToolRegistry::new();
-    vava_coding::tools::register_coding_tools(&mut registry);
-
-    let mut harness = AgentHarness::new(Arc::new(client), registry, system, root);
+    let client: Arc<dyn vava_core::ModelClient> = Arc::new(client);
+    let mut session = vava_coding::CodingSession::open(client, &root)?;
 
     // Ctrl-C cancels the in-flight turn.
-    let token = harness.cancellation_token();
+    let token = session.cancellation_token();
     let ctrl_c = tokio::spawn(async move {
         let _ = tokio::signal::ctrl_c().await;
         token.cancel();
@@ -94,31 +89,10 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
     let (tx, rx) = mpsc::channel(64);
     let renderer = tokio::spawn(render::render_events(rx, cli.debug));
 
-    let result = harness.prompt(prompt, tx).await;
+    let result = session.prompt(prompt, tx).await;
     ctrl_c.abort();
     renderer.await.ok();
     result.map_err(anyhow::Error::from)
-}
-
-/// The default system prompt.
-///
-/// Repository-specific instructions (`AGENTS.md`) are added by the coding
-/// session in a later milestone; this is the generic baseline.
-fn system_prompt(root: &std::path::Path) -> String {
-    format!(
-        "You are vava, a coding agent operating inside a software repository.\n\n\
-         Working directory:\n{}\n\n\
-         Use the provided tools to inspect and modify the repository.\n\n\
-         Guidelines:\n\
-         - Inspect relevant code before modifying it.\n\
-         - Do not invent file contents.\n\
-         - Prefer minimal, focused changes.\n\
-         - Follow existing project conventions.\n\
-         - Run relevant tests after making changes.\n\
-         - If a tool fails, inspect the error and adjust your approach.\n\
-         - Use tools whenever repository information is required.",
-        root.display()
-    )
 }
 
 #[cfg(test)]
@@ -162,12 +136,5 @@ mod tests {
     fn no_thinking_disables_thinking() {
         let cli = Cli::try_parse_from(["vava", "-p", "hi", "--no-thinking"]).unwrap();
         assert!(!cli.effective_thinking());
-    }
-
-    #[test]
-    fn system_prompt_contains_the_working_directory() {
-        let prompt = system_prompt(&PathBuf::from("/projects/foo"));
-        assert!(prompt.contains("/projects/foo"));
-        assert!(prompt.contains("coding agent"));
     }
 }

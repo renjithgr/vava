@@ -28,21 +28,26 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 9 of 14 — `AgentHarness` with cancellation — complete.**
+**Milestone 10 of 14 — `CodingSession` — complete.**
 
-The harness (M5) and its tool-cancellation wiring (M8) are now fully rounded
-out:
+Implemented:
 
-- `prompt` rejects an already-cancelled token up front
-- cancellation is tested end to end: a hung model stream aborts via
-  `tokio::select!` (M5 test), and a running `bash` process is killed when
-  the user cancels mid-turn (new integration test)
-- tool cancellation aborts the turn with `AgentError::Cancelled` rather
-  than being fed back to the model
+- Repository root discovery: nearest ancestor with a `.git` entry (dir or
+  file, so worktrees/submodules work) or the supplied directory — Git not
+  required
+- `AGENTS.md` loading; injected into the system prompt as project
+  instructions
+- `CodingSession`: binds one repository to a harness — discovers root,
+  loads instructions, builds the prompt, registers the coding tools;
+  exposes `prompt`, `messages`, `cancel`, `cancellation_token`
+- The CLI now uses `CodingSession`; the temporary inline system prompt is
+  gone
+- 13 new tests: root discovery (nested, nearest-wins, git-file, no-repo),
+  AGENTS.md loading, prompt shape, and an end-to-end session test that
+  discovers the root from a nested dir and runs tools against it
 
-Not yet implemented: `CodingSession` (repository root, `AGENTS.md`, system
-prompt), session persistence, improved rendering, the REPL. See
-[Roadmap](#roadmap).
+Not yet implemented: session persistence (JSONL), improved rendering, the
+REPL. See [Roadmap](#roadmap).
 
 ## Installation
 
@@ -187,10 +192,10 @@ Implemented:
 - [x] **M7** `read` tool
 - [x] **M8** `write`, `edit`, `bash` tools; a real coding task works
 - [x] **M9** `AgentHarness` with cancellation
+- [x] **M10** `CodingSession`: repository root, `AGENTS.md`, system prompt
 
 Planned, in order:
 
-- [ ] **M10** `CodingSession`: repository root, `AGENTS.md`, system prompt
 - [ ] **M11** JSONL session persistence (`~/.local/share/vava/sessions/`)
 - [ ] **M12** Improved CLI rendering (debug/verbose reasoning output)
 - [ ] **M13** Interactive REPL (`vava` with no prompt)

@@ -139,6 +139,36 @@ vava -c
 With no prompt, `vava` opens an interactive REPL; `vava --tui` opens the
 full-screen Ratatui frontend.
 
+## Desktop app
+
+In addition to the terminal frontend, vava ships a native desktop app
+(`apps/vava-desktop`) built with Tauri 2, React, and TypeScript. It is the
+same coding agent with a different user interface: React renders, the Tauri
+commands are a thin adapter, and all agent behavior (sessions, tools,
+DeepSeek calls, cancellation) comes from the same `vava-coding` /
+`vava-core` / `vava-deepseek` crates the CLI uses.
+
+```text
+                    vava-core
+                        │
+                   vava-coding
+                   /          \
+                  /            \
+          vava-cli          vava-desktop
+             │                   │
+             ▼                   ▼
+          Terminal          Tauri + React
+```
+
+The desktop app does not wrap the CLI executable and does not run an
+internal HTTP server; React and Rust communicate over Tauri IPC only.
+
+```bash
+cd apps/vava-desktop
+npm install
+npm run tauri dev
+```
+
 ## Architecture
 
 Four layers, each with a single responsibility:
@@ -255,6 +285,17 @@ Implemented:
 - [x] **M14** Ratatui TUI consuming the same `AgentEvent` stream
 - [x] **M15** Session resume & session management (`-c`, `-r`, `--resume`,
       `/new`, `/resume`, `/session`, repository-scoped sessions)
+- [ ] **D1** Desktop skeleton: Tauri 2 + React + TypeScript + Vite,
+      workspace integration, `get_version` IPC round trip
+- [ ] **D2** Repository opening, recent repositories
+- [ ] **D3** Sessions: list, select, new, resume
+- [ ] **D4** Prompt execution with live streaming
+- [ ] **D5** Tool cards (read/write/edit/bash)
+- [ ] **D6** Cancellation
+- [ ] **D7** Diffs and the Changes panel
+- [ ] **D8** `@file` completion
+- [ ] **D9** DeepSeek settings with secure keychain storage
+- [ ] **D10** UX polish: shortcuts, markdown, window state
 
 Deliberately out of scope for v1: OpenAI/Anthropic/OpenRouter support, OAuth,
 databases, web servers, multi-provider abstractions, context compaction,

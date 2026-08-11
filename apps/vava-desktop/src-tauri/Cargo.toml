@@ -1,0 +1,32 @@
+[package]
+name = "vava-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The Rust backend of the vava desktop app: a thin Tauri adapter over vava-coding."
+
+[lib]
+name = "vava_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "vava-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+vava-core = { path = "../../../crates/vava-core" }
+vava-coding = { path = "../../../crates/vava-coding" }
+vava-deepseek = { path = "../../../crates/vava-deepseek" }
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri = { workspace = true }
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

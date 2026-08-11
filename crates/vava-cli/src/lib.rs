@@ -166,21 +166,9 @@ fn start_session(
             // Newest first; if the most recent session cannot be loaded
             // (e.g. middle-record corruption), fall through to the next
             // valid one. Truncated final lines load fine by design.
-            let summaries = store.list_for_repository(root)?;
-            let mut resumed = None;
-            for summary in summaries {
-                match store.load(&summary.id) {
-                    Ok(loaded) => {
-                        resumed = Some((loaded, summary));
-                        break;
-                    }
-                    Err(error) => {
-                        tracing::warn!(%error, "skipping unreadable session while continuing");
-                    }
-                }
-            }
-            match resumed {
-                Some((loaded, summary)) => {
+            match store.latest_loadable(root)? {
+                Some(loaded) => {
+                    let summary = loaded.summary.clone();
                     let session = CodingSession::resume_with_store(client, root, store, loaded)?;
                     Ok(Some((session, Some(resumed_banner(&summary)))))
                 }

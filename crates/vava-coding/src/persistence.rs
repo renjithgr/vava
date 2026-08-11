@@ -316,6 +316,24 @@ impl SessionStore {
         Ok(self.list_for_repository(root)?.into_iter().next())
     }
 
+    /// The most recently updated *loadable* session of one repository.
+    ///
+    /// Walks the newest-first listing and returns the first session whose
+    /// log replays cleanly; unreadable logs (e.g. middle-record corruption)
+    /// are skipped with a warning. This is the "continue the last session"
+    /// resolution shared by the CLI and the desktop frontend.
+    pub fn latest_loadable(&self, root: &Path) -> Result<Option<LoadedSession>, PersistError> {
+        for summary in self.list_for_repository(root)? {
+            match self.load(&summary.id) {
+                Ok(loaded) => return Ok(Some(loaded)),
+                Err(error) => {
+                    tracing::warn!(%error, "skipping unreadable session while continuing");
+                }
+            }
+        }
+        Ok(None)
+    }
+
     /// Push one log file's summary onto `summaries` (skipping unreadable
     /// files with a warning — they surface as errors when actually loaded).
     fn push_summary(&self, summaries: &mut Vec<SessionSummary>, path: &Path) {
@@ -777,6 +795,44 @@ mod tests {
         assert_eq!(loaded.messages, vec![user("legacy prompt")]);
         // It was not moved or rewritten.
         assert!(flat.is_file());
+    }
+
+    #[test]
+    fn latest_loadable_skips_corrupt_logs_and_returns_the_newest_valid() {
+        let (store, _dir) = store();
+        let repo = TestDir::new();
+
+        // The newest session has a corrupt middle record, so it cannot be
+        // loaded; the resolution must fall through to the older valid one.
+        let corrupt = store.create(repo.path()).unwrap();
+        corrupt.append(&user("newest but corrupt")).unwrap();
+        let mut file = OpenOptions::new()
+            .append(true)
+            .open(corrupt.path())
+            .unwrap();
+        writeln!(file, "this is not json").unwrap();
+        drop(file);
+
+        let valid = store.create(repo.path()).unwrap();
+        valid.append(&user("older and valid")).unwrap();
+
+        let loaded = store.latest_loadable(repo.path()).unwrap().unwrap();
+        assert_eq!(loaded.summary.id, *valid.id());
+        assert_eq!(
+            loaded.summary.first_user_message.as_deref(),
+            Some("older and valid")
+        );
+        assert_eq!(loaded.messages, vec![user("older and valid")]);
+    }
+
+    #[test]
+    fn latest_loadable_returns_none_when_nothing_loads() {
+        let (store, _dir) = store();
+        let repo = TestDir::new();
+        // A log whose header is unreadable can neither be listed nor loaded.
+        let log = store.create(repo.path()).unwrap();
+        std::fs::write(log.path(), "this is not json\n").unwrap();
+        assert!(store.latest_loadable(repo.path()).unwrap().is_none());
     }
 
     #[test]

@@ -4,13 +4,16 @@
 # that mirror the four conceptual layers:
 #
 #   vava-cli        CLI / TUI (interaction and rendering only)
+#   vava-desktop    Tauri desktop frontend (Rust backend, thin adapter)
 #   vava-coding     CodingSession (repository root, tools, persistence)
 #   vava-core       AgentHarness, messages, events, tools (provider-independent)
 #   vava-deepseek   DeepSeekClient (DeepSeek wire protocol only)
 #
-# Dependency direction: vava-cli -> vava-coding -> vava-core,
-# and vava-coding -> vava-deepseek -> vava-core. vava-core never depends on
+# Dependency direction: vava-cli -> vava-coding -> vava-core, and
+# vava-coding -> vava-deepseek -> vava-core. vava-core never depends on
 # either of the outer crates, so the conversation types stay provider-independent.
+# vava-desktop (the Rust side of the Tauri app) depends on vava-coding and
+# vava-deepseek, like vava-cli, but adds only the Tauri adapter layer.
 
 [workspace]
 resolver = "2"
@@ -19,6 +22,7 @@ members = [
     "crates/vava-deepseek",
     "crates/vava-coding",
     "crates/vava-cli",
+    "apps/vava-desktop/src-tauri",
 ]
 
 [workspace.package]
@@ -44,6 +48,8 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "str
 secrecy = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tauri = "2"
+tauri-build = "2"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"

@@ -21,12 +21,19 @@ tauri-build = { workspace = true }
 vava-core = { path = "../../../crates/vava-core" }
 vava-coding = { path = "../../../crates/vava-coding" }
 vava-deepseek = { path = "../../../crates/vava-deepseek" }
+chrono.workspace = true
+dirs.workspace = true
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri = { workspace = true }
+tauri-plugin-dialog = { workspace = true }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+futures.workspace = true

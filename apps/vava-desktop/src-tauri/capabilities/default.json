@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal capabilities for the main window: core IPC and window operations. Repository and filesystem access happens exclusively through vava's own commands, never through broad plugins.",
+  "description": "Minimal capabilities for the main window: core IPC and the native folder picker. Repository and filesystem access happens exclusively through vava's own commands, never through broad plugins.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open"]
 }

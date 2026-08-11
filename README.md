@@ -285,9 +285,9 @@ Implemented:
 - [x] **M14** Ratatui TUI consuming the same `AgentEvent` stream
 - [x] **M15** Session resume & session management (`-c`, `-r`, `--resume`,
       `/new`, `/resume`, `/session`, repository-scoped sessions)
-- [ ] **D1** Desktop skeleton: Tauri 2 + React + TypeScript + Vite,
+- [x] **D1** Desktop skeleton: Tauri 2 + React + TypeScript + Vite,
       workspace integration, `get_version` IPC round trip
-- [ ] **D2** Repository opening, recent repositories
+- [x] **D2** Repository opening, recent repositories
 - [ ] **D3** Sessions: list, select, new, resume
 - [ ] **D4** Prompt execution with live streaming
 - [ ] **D5** Tool cards (read/write/edit/bash)

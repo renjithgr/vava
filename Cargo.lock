@@ -140,6 +140,8 @@ dependencies = [
 name = "vava-deepseek"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "vava-core",
 ]
 

@@ -28,23 +28,29 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 1 of 14 — workspace skeleton and core types — complete.**
+**Milestone 2 of 14 — workspace skeleton, core types, and DeepSeek request/response types — complete.**
 
 Implemented:
 
 - Cargo workspace with four crates (`vava-core`, `vava-deepseek`,
   `vava-coding`, `vava-cli`) mirroring the four conceptual layers
 - Provider-independent conversation types: `Message`, `UserMessage`,
-  `AssistantMessage`, `ToolCall`, `ToolResultMessage`
+  `AssistantMessage`, `ToolCall`, `ToolResultMessage`, `ToolDefinition`
 - `reasoning_content` treated as a first-class part of assistant messages
   (it survives serialization by design)
 - Typed events: `ModelEvent` (streaming model output) and `AgentEvent`
   (the contract between the agent and any frontend)
 - Core error types: `ToolError`, `Cancelled`
-- Unit tests for serialization shapes, round-trips, and event data
+- DeepSeek request serialization (`DeepSeekRequest`, explicit wire types,
+  `thinking` parameter, tool-call arguments as JSON strings)
+- DeepSeek response types: `ChatResponse`, `StreamChunk`, `Delta`,
+  `DeepSeekUsage`, `ApiErrorBody`
+- `ModelConfig` (model, thinking mode, base URL) with official-API defaults
+- Unit tests for serialization shapes, round-trips, response parsing, and
+  fragmented tool-call argument accumulation
 
-Not yet implemented: the DeepSeek client, the SSE parser, tools, the agent
-loop, the CLI, session persistence. See [Roadmap](#roadmap).
+Not yet implemented: the DeepSeek HTTP client, the SSE parser, tools, the
+agent loop, the CLI, session persistence. See [Roadmap](#roadmap).
 
 ## Installation
 
@@ -181,11 +187,10 @@ Implemented:
 
 - [x] **M1** Workspace skeleton; `Message`, `ToolCall`, `ToolResult`,
       `ModelEvent`, `AgentEvent`, error types
-- [x] *tests:* serialization shapes, round-trips, event data
+- [x] **M2** DeepSeek request serialization and response types
 
 Planned, in order:
 
-- [ ] **M2** DeepSeek request serialization and response types
 - [ ] **M3** SSE streaming parser (fixture-based tests)
 - [ ] **M4** `Tool` trait and `ToolRegistry` (fake tools first)
 - [ ] **M5** Agent/tool-call loop against a fake model

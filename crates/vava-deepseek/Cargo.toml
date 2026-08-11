@@ -7,3 +7,5 @@ description = "A minimal, auditable DeepSeek API client for vava."
 
 [dependencies]
 vava-core = { path = "../vava-core" }
+serde.workspace = true
+serde_json.workspace = true

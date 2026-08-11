@@ -1,12 +1,37 @@
-//! Tool results, and — in a later milestone — the [`Tool`] trait and
-//! [`ToolRegistry`].
-//!
-//! Milestone 1 only defines [`ToolResult`], the value produced by executing
-//! a tool. The trait and registry are added when the tools themselves are
-//! implemented (milestone 4), so they are defined with the real tool set in
-//! mind rather than speculatively.
+//! Tool results and — in a later milestone — the [`Tool`] trait and
+//! [`ToolRegistry`]. [`ToolDefinition`] is here already because the DeepSeek
+//! request serializer needs a provider-independent description of a tool to
+//! advertise to the model.
 
 use serde::{Deserialize, Serialize};
+
+/// A provider-independent description of a tool, used to advertise tools to
+/// the model. The DeepSeek layer converts this into its wire format
+/// (`{"type": "function", "function": {...}}`); no core type carries
+/// protocol-specific serde annotations.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    /// The name the model uses to invoke the tool.
+    pub name: String,
+    /// A description of what the tool does, for the model.
+    pub description: String,
+    /// A JSON Schema describing the arguments the tool accepts.
+    pub parameters: serde_json::Value,
+}
+
+impl ToolDefinition {
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            parameters,
+        }
+    }
+}
 
 /// The outcome of executing one tool.
 ///
@@ -63,5 +88,18 @@ mod tests {
         let s = serde_json::to_string(&result).unwrap();
         let back: ToolResult = serde_json::from_str(&s).unwrap();
         assert_eq!(back, result);
+    }
+
+    #[test]
+    fn tool_definition_round_trips() {
+        let definition = ToolDefinition::new(
+            "read",
+            "Read a file within the repository.",
+            serde_json::json!({"type": "object"}),
+        );
+        let s = serde_json::to_string(&definition).unwrap();
+        let back: ToolDefinition = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, definition);
+        assert_eq!(back.name, "read");
     }
 }

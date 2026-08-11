@@ -23,4 +23,4 @@ pub mod tool;
 pub use error::{Cancelled, ToolError};
 pub use event::{AgentEvent, ModelEvent, Usage};
 pub use message::{AssistantMessage, Message, ToolCall, ToolResultMessage, UserMessage};
-pub use tool::ToolResult;
+pub use tool::{ToolDefinition, ToolResult};

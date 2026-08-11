@@ -1,0 +1,11 @@
+[package]
+name = "vava-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Provider-independent core types for the vava coding agent: messages, events, tools, agent harness."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

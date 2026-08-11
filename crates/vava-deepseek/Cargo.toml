@@ -1,0 +1,9 @@
+[package]
+name = "vava-deepseek"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A minimal, auditable DeepSeek API client for vava."
+
+[dependencies]
+vava-core = { path = "../vava-core" }

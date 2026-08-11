@@ -1,0 +1,10 @@
+[package]
+name = "vava-coding"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Turns the generic vava agent into a coding agent: repository root, system prompt, tools, session persistence."
+
+[dependencies]
+vava-core = { path = "../vava-core" }
+vava-deepseek = { path = "../vava-deepseek" }

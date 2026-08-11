@@ -1,0 +1,50 @@
+# vava — a minimal Rust coding agent powered by DeepSeek.
+#
+# This is a virtual workspace. The architecture is split into four crates
+# that mirror the four conceptual layers:
+#
+#   vava-cli        CLI / TUI (interaction and rendering only)
+#   vava-coding     CodingSession (repository root, tools, persistence)
+#   vava-core       AgentHarness, messages, events, tools (provider-independent)
+#   vava-deepseek   DeepSeekClient (DeepSeek wire protocol only)
+#
+# Dependency direction: vava-cli -> vava-coding -> vava-core,
+# and vava-coding -> vava-deepseek -> vava-core. vava-core never depends on
+# either of the outer crates, so the conversation types stay provider-independent.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/vava-core",
+    "crates/vava-deepseek",
+    "crates/vava-coding",
+    "crates/vava-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/your-name/vava"
+
+# Versions are pinned here so every crate agrees on a single dependency set.
+# A crate only *uses* a dependency when it references it from its own
+# Cargo.toml; entries here are the policy, not the usage list.
+[workspace.dependencies]
+anyhow = "1"
+async-stream = "0.3"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+dirs = "6"
+futures = "0.3"
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls-tls"] }
+secrecy = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }

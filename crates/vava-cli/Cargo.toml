@@ -1,0 +1,13 @@
+[package]
+name = "vava-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The vava command-line frontend: prompt mode, REPL, and eventually a Ratatui TUI."
+
+[[bin]]
+name = "vava"
+path = "src/main.rs"
+
+[dependencies]
+vava-coding = { path = "../vava-coding" }

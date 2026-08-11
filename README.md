@@ -28,31 +28,26 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 6 of 14 — the real DeepSeek client — complete.**
+**Milestone 7 of 14 — the `read` tool — complete.**
 
 Implemented:
 
-- `DeepSeekClient`: reqwest-based HTTP client (model, thinking mode, base
-  URL from `ModelConfig`; API key via `secrecy::SecretString`; never logged
-  or shown in `Debug`), implements the `ModelClient` seam
-- SSE response → `ModelEvent` stream: `SseParser` framing → payload
-  interpretation → `ChunkTranslator`, with a guaranteed trailing `Finished`
-- Typed API errors: `Http`, `Api { status, message }`, `Sse`, `Protocol`
-- A real CLI (`vava -p "say hello"` works): clap flags `-p/--prompt`,
-  `--cwd`, `--model`, `--thinking`, `--no-thinking`, `--debug`;
-  `DEEPSEEK_API_KEY`; Ctrl-C cancels the in-flight turn
-- A text `Renderer` consuming `AgentEvent`s (reasoning hidden unless
-  `--debug`)
-- Mock-server integration tests: the client streams events end to end over
-  a real HTTP connection, the wire request is asserted (Authorization
-  header carries the key, the body never does), API errors and malformed
-  payloads are typed
+- `resolve_within_root`: the shared security boundary for all filesystem
+  tools (resolve → normalize → canonicalize → verify under root; rejects
+  `..` escapes, absolute paths outside the root, and symlinks that point
+  out; handles `/var` → `/private/var`-style roots; allows not-yet-existing
+  paths for `write`)
+- `read`: numbered lines, optional `offset`/`limit`, directory rejection,
+  missing-file results, output caps (500 default, 2000 max), truncation
+  notice, typed `PathError` (`OutsideRoot`, `Invalid`)
+- `register_coding_tools` seam; the CLI now registers the coding tools
+- 16 new tests: path boundary cases (incl. a symlink-escape test), read
+  slicing, directories, missing files, empty files, outside-root rejection,
+  typed argument errors
 
-`vava -p "say hello"` is now fully functional against the real API.
-
-Not yet implemented: the coding tools (`read`/`write`/`edit`/`bash`),
-`AgentHarness` cancellation propagation into tools, `CodingSession`,
-session persistence. See [Roadmap](#roadmap).
+Not yet implemented: `write`, `edit`, `bash`; `AgentHarness` cancellation
+propagation into tools; `CodingSession`; session persistence. See
+[Roadmap](#roadmap).
 
 ## Installation
 
@@ -194,10 +189,10 @@ Implemented:
 - [x] **M4** `Tool` trait and `ToolRegistry` (fake tools first)
 - [x] **M5** Agent/tool-call loop against a fake model
 - [x] **M6** Real DeepSeek client — `vava -p "say hello"` works
+- [x] **M7** `read` tool
 
 Planned, in order:
 
-- [ ] **M7** `read` tool
 - [ ] **M8** `write`, `edit`, `bash` tools; a real coding task works
 - [ ] **M9** `AgentHarness` with cancellation
 - [ ] **M10** `CodingSession`: repository root, `AGENTS.md`, system prompt

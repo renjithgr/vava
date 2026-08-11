@@ -1649,6 +1649,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "vava-coding",
  "vava-core",
  "vava-deepseek",
 ]
@@ -1657,6 +1658,12 @@ dependencies = [
 name = "vava-coding"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
  "vava-core",
  "vava-deepseek",
 ]

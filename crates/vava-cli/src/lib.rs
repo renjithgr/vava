@@ -79,7 +79,10 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
     let root = cli.cwd.clone().unwrap_or(std::env::current_dir()?);
     let system = system_prompt(&root);
 
-    let mut harness = AgentHarness::new(Arc::new(client), ToolRegistry::new(), system, root);
+    let mut registry = ToolRegistry::new();
+    vava_coding::tools::register_coding_tools(&mut registry);
+
+    let mut harness = AgentHarness::new(Arc::new(client), registry, system, root);
 
     // Ctrl-C cancels the in-flight turn.
     let token = harness.cancellation_token();

@@ -8,3 +8,11 @@ description = "Turns the generic vava agent into a coding agent: repository root
 [dependencies]
 vava-core = { path = "../vava-core" }
 vava-deepseek = { path = "../vava-deepseek" }
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tokio-util.workspace = true

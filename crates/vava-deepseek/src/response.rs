@@ -8,7 +8,7 @@
 use serde::Deserialize;
 
 /// A complete (non-streaming) chat completion response.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ChatResponse {
     pub id: String,
     pub object: String,
@@ -18,14 +18,14 @@ pub struct ChatResponse {
     pub usage: Option<DeepSeekUsage>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ChatChoice {
     pub index: usize,
     pub message: ResponseMessage,
     pub finish_reason: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ResponseMessage {
     pub role: Option<String>,
     /// `None` when the message only carries tool calls.
@@ -36,7 +36,7 @@ pub struct ResponseMessage {
     pub tool_calls: Vec<ResponseToolCall>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ResponseToolCall {
     pub id: String,
     #[serde(rename = "type")]
@@ -44,7 +44,7 @@ pub struct ResponseToolCall {
     pub function: ResponseFunction,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ResponseFunction {
     pub name: String,
     /// The arguments as a JSON-encoded *string*, e.g.
@@ -53,7 +53,7 @@ pub struct ResponseFunction {
 }
 
 /// One SSE chunk of a streaming response (`chat.completion.chunk`).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct StreamChunk {
     pub id: String,
     pub object: Option<String>,
@@ -65,7 +65,7 @@ pub struct StreamChunk {
     pub usage: Option<DeepSeekUsage>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct StreamChoice {
     pub index: usize,
     pub delta: Delta,
@@ -75,7 +75,7 @@ pub struct StreamChoice {
 
 /// The `delta` of a streaming choice: the piece of the message that arrived
 /// in this chunk.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Delta {
     pub role: Option<String>,
     pub content: Option<String>,
@@ -86,7 +86,7 @@ pub struct Delta {
 
 /// A fragment of a tool call inside a delta. `arguments` may be split across
 /// many chunks and must be accumulated per `index`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct DeltaToolCall {
     /// Which tool call (within this message) this fragment belongs to.
     pub index: usize,
@@ -96,7 +96,7 @@ pub struct DeltaToolCall {
     pub function: Option<DeltaFunction>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct DeltaFunction {
     pub name: Option<String>,
     pub arguments: Option<String>,
@@ -113,12 +113,12 @@ pub struct DeepSeekUsage {
 }
 
 /// The JSON error body returned for HTTP 4xx/5xx responses.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ApiErrorBody {
     pub error: ApiErrorDetail,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ApiErrorDetail {
     pub message: String,
     #[serde(rename = "type")]

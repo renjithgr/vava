@@ -28,7 +28,7 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 2 of 14 — workspace skeleton, core types, and DeepSeek request/response types — complete.**
+**Milestone 3 of 14 — workspace skeleton, core types, DeepSeek types, and the SSE parser — complete.**
 
 Implemented:
 
@@ -46,11 +46,17 @@ Implemented:
 - DeepSeek response types: `ChatResponse`, `StreamChunk`, `Delta`,
   `DeepSeekUsage`, `ApiErrorBody`
 - `ModelConfig` (model, thinking mode, base URL) with official-API defaults
-- Unit tests for serialization shapes, round-trips, response parsing, and
-  fragmented tool-call argument accumulation
+- SSE parser: incremental framing (`SseParser`, safe under arbitrary byte
+  fragmentation, CRLF + multi-line data + comments), payload interpretation
+  (`[DONE]` / chunk), and `ChunkTranslator` (chunks → `ModelEvent`s,
+  tool calls tracked by index)
+- `DeepSeekError`: SSE, protocol, cancellation (HTTP/API variants land
+  with the client)
+- Unit tests plus fixture-based integration tests against two recorded
+  DeepSeek streams (`tool_turn`, `final_answer`)
 
-Not yet implemented: the DeepSeek HTTP client, the SSE parser, tools, the
-agent loop, the CLI, session persistence. See [Roadmap](#roadmap).
+Not yet implemented: the DeepSeek HTTP client, the tool trait/registry,
+the agent loop, the CLI, session persistence. See [Roadmap](#roadmap).
 
 ## Installation
 
@@ -188,10 +194,10 @@ Implemented:
 - [x] **M1** Workspace skeleton; `Message`, `ToolCall`, `ToolResult`,
       `ModelEvent`, `AgentEvent`, error types
 - [x] **M2** DeepSeek request serialization and response types
+- [x] **M3** SSE streaming parser (fixture-based tests)
 
 Planned, in order:
 
-- [ ] **M3** SSE streaming parser (fixture-based tests)
 - [ ] **M4** `Tool` trait and `ToolRegistry` (fake tools first)
 - [ ] **M5** Agent/tool-call loop against a fake model
 - [ ] **M6** Real DeepSeek client — `vava -p "say hello"` works

@@ -7,16 +7,22 @@
 //!   `vava-core` messages (the explicit DeepSeek serializer)
 //! - [`response`] — the response shapes: chat completions, streaming
 //!   chunks, usage, and API error bodies
+//! - [`stream`] — the SSE parser: framing, payload interpretation, and the
+//!   translation of chunks into [`vava_core::ModelEvent`]s
+//! - [`error`] — typed errors raised by this layer
 //! - [`model`] — client configuration (model, thinking mode, base URL)
-//! - `stream` — the SSE parser (next milestone)
 //! - `client` — the HTTP client (a later milestone)
 //!
 //! It never executes tools, never touches the filesystem, and never prints.
 
+pub mod error;
 pub mod model;
 pub mod request;
 pub mod response;
+pub mod stream;
 
+pub use error::DeepSeekError;
 pub use model::{DEFAULT_BASE_URL, DEFAULT_MODEL, ModelConfig};
 pub use request::{DeepSeekRequest, Role, Thinking, ThinkingMode, WireMessage, WireTool};
 pub use response::{ApiErrorBody, ChatResponse, DeepSeekUsage, StreamChunk};
+pub use stream::{ChunkTranslator, SseParser, StreamEvent, parse_payload};

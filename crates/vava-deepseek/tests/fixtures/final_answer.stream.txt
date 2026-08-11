@@ -1,0 +1,12 @@
+data: {"id":"chatcmpl-final","object":"chat.completion.chunk","created":1700000001,"model":"deepseek-chat","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-final","choices":[{"index":0,"delta":{"reasoning_content":"Done."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-final","choices":[{"index":0,"delta":{"content":"The "},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-final","choices":[{"index":0,"delta":{"content":"tests pass now."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-final","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+

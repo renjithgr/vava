@@ -18,7 +18,10 @@
 //! The `bash` tool is intentionally *not* sandboxed: it runs commands with
 //! the user's permissions. See the README's security model.
 
+mod bash;
+mod edit;
 mod read;
+mod write;
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -33,6 +36,31 @@ use vava_core::ToolRegistry;
 /// directly until that layer lands.
 pub fn register_coding_tools(registry: &mut ToolRegistry) {
     registry.register(Arc::new(read::ReadTool));
+    registry.register(Arc::new(write::WriteTool));
+    registry.register(Arc::new(edit::EditTool));
+    registry.register(Arc::new(bash::BashTool::default()));
+}
+
+/// Write a file atomically: write to a temporary sibling, then rename.
+///
+/// Parent directories are created as needed. The rename is atomic on the
+/// same filesystem, so a reader never observes a half-written file.
+pub(crate) async fn atomic_write(path: &Path, content: &str) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    tokio::fs::create_dir_all(parent).await?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("file");
+    let tmp = parent.join(format!(".vava-tmp-{}-{name}", std::process::id()));
+    tokio::fs::write(&tmp, content).await?;
+    match tokio::fs::rename(&tmp, path).await {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            Err(error)
+        }
+    }
 }
 
 /// Errors from resolving a tool path against the workspace root.
@@ -131,15 +159,19 @@ fn canonicalize_deepest_existing(path: &Path) -> PathBuf {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+pub(crate) mod test_util {
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
 
     /// A unique temporary directory that cleans itself up on drop.
-    struct TestDir(PathBuf);
+    pub(crate) struct TestDir(PathBuf);
 
     impl TestDir {
-        fn new(name: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!("vava-test-{}-{name}", std::process::id()));
+        pub(crate) fn new() -> Self {
+            let n = NEXT.fetch_add(1, Ordering::SeqCst);
+            let dir = std::env::temp_dir().join(format!("vava-test-{}-{n}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
             // Canonicalize so comparisons hold on platforms where the temp
@@ -148,12 +180,16 @@ mod tests {
             Self(dir)
         }
 
-        fn path(&self) -> &Path {
+        pub(crate) fn path(&self) -> &Path {
             &self.0
         }
 
-        fn child(&self, name: &str) -> PathBuf {
+        pub(crate) fn child(&self, name: &str) -> PathBuf {
             self.0.join(name)
+        }
+
+        pub(crate) fn write(&self, name: &str, content: &str) {
+            std::fs::write(self.0.join(name), content).unwrap();
         }
     }
 
@@ -162,10 +198,16 @@ mod tests {
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_util::TestDir;
+    use super::*;
 
     #[test]
     fn resolves_relative_paths_inside_the_root() {
-        let dir = TestDir::new("resolve-in");
+        let dir = TestDir::new();
         std::fs::create_dir_all(dir.child("src")).unwrap();
         let resolved = resolve_within_root(dir.path(), "src/main.rs").unwrap();
         assert_eq!(resolved, dir.child("src/main.rs"));
@@ -173,7 +215,7 @@ mod tests {
 
     #[test]
     fn resolves_absolute_paths_inside_the_root() {
-        let dir = TestDir::new("resolve-abs");
+        let dir = TestDir::new();
         let resolved =
             resolve_within_root(dir.path(), dir.child("Cargo.toml").to_str().unwrap()).unwrap();
         assert_eq!(resolved, dir.child("Cargo.toml"));
@@ -181,7 +223,7 @@ mod tests {
 
     #[test]
     fn rejects_parent_traversal_outside_the_root() {
-        let dir = TestDir::new("resolve-parent");
+        let dir = TestDir::new();
         let err = resolve_within_root(dir.path(), "../secret.txt").unwrap_err();
         assert!(matches!(err, PathError::OutsideRoot(_)));
 
@@ -191,14 +233,14 @@ mod tests {
 
     #[test]
     fn rejects_absolute_paths_outside_the_root() {
-        let dir = TestDir::new("resolve-outside");
+        let dir = TestDir::new();
         let err = resolve_within_root(dir.path(), "/etc/passwd").unwrap_err();
         assert!(matches!(err, PathError::OutsideRoot(_)));
     }
 
     #[test]
     fn rejects_empty_paths() {
-        let dir = TestDir::new("resolve-empty");
+        let dir = TestDir::new();
         assert!(matches!(
             resolve_within_root(dir.path(), ""),
             Err(PathError::Invalid(..))
@@ -208,7 +250,7 @@ mod tests {
     #[test]
     fn allows_nonexistent_paths_inside_the_root() {
         // `write` needs to create files that do not exist yet.
-        let dir = TestDir::new("resolve-new");
+        let dir = TestDir::new();
         let resolved = resolve_within_root(dir.path(), "new/dir/file.rs").unwrap();
         assert_eq!(resolved, dir.child("new/dir/file.rs"));
     }
@@ -218,8 +260,8 @@ mod tests {
     fn rejects_symlinks_that_escape_the_root() {
         use std::os::unix::fs::symlink;
 
-        let inside = TestDir::new("resolve-symlink-in");
-        let outside = TestDir::new("resolve-symlink-out");
+        let inside = TestDir::new();
+        let outside = TestDir::new();
         std::fs::write(outside.child("secret.txt"), "secret").unwrap();
         symlink(outside.child("secret.txt"), inside.child("link.txt")).unwrap();
 
@@ -229,15 +271,15 @@ mod tests {
 
     #[test]
     fn normalizes_dot_components() {
-        let dir = TestDir::new("resolve-dot");
+        let dir = TestDir::new();
         let resolved = resolve_within_root(dir.path(), "./a/./b.txt").unwrap();
         assert_eq!(resolved, dir.child("a/b.txt"));
     }
 
     #[test]
-    fn register_adds_the_read_tool() {
+    fn register_adds_all_four_tools() {
         let mut registry = ToolRegistry::new();
         register_coding_tools(&mut registry);
-        assert_eq!(registry.names(), vec!["read"]);
+        assert_eq!(registry.names(), vec!["bash", "edit", "read", "write"]);
     }
 }

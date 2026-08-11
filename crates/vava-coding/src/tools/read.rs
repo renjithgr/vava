@@ -133,41 +133,10 @@ impl Tool for ReadTool {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::path::{Path, PathBuf};
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::path::Path;
     use tokio_util::sync::CancellationToken;
 
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-
-    /// A unique temporary directory, removed when dropped.
-    struct TestDir(PathBuf);
-
-    impl TestDir {
-        fn new() -> Self {
-            let n = NEXT.fetch_add(1, Ordering::SeqCst);
-            let dir = std::env::temp_dir().join(format!("vava-read-{}-{n}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(&dir).unwrap();
-            // Canonicalize so the resolved tool paths match on platforms
-            // where the temp dir is reached through a symlink.
-            let dir = std::fs::canonicalize(&dir).unwrap();
-            Self(dir)
-        }
-
-        fn write(&self, name: &str, content: &str) {
-            std::fs::write(self.0.join(name), content).unwrap();
-        }
-
-        fn path(&self) -> &Path {
-            &self.0
-        }
-    }
-
-    impl Drop for TestDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use crate::tools::test_util::TestDir;
 
     fn context(root: &Path) -> ToolContext {
         ToolContext::new(root.to_path_buf(), CancellationToken::new())

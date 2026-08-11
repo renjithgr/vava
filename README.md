@@ -28,25 +28,26 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 7 of 14 — the `read` tool — complete.**
+**Milestone 8 of 14 — all four coding tools — complete.**
 
 Implemented:
 
-- `resolve_within_root`: the shared security boundary for all filesystem
-  tools (resolve → normalize → canonicalize → verify under root; rejects
-  `..` escapes, absolute paths outside the root, and symlinks that point
-  out; handles `/var` → `/private/var`-style roots; allows not-yet-existing
-  paths for `write`)
-- `read`: numbered lines, optional `offset`/`limit`, directory rejection,
-  missing-file results, output caps (500 default, 2000 max), truncation
-  notice, typed `PathError` (`OutsideRoot`, `Invalid`)
-- `register_coding_tools` seam; the CLI now registers the coding tools
-- 16 new tests: path boundary cases (incl. a symlink-escape test), read
-  slicing, directories, missing files, empty files, outside-root rejection,
-  typed argument errors
+- `write`: create/overwrite UTF-8 files inside the root, parent dirs
+  created, atomic write (temp sibling + rename)
+- `edit`: exact string replacement — `old_text` must appear exactly once;
+  zero and ambiguous matches are both errors with guidance; no fuzzy
+  matching
+- `bash`: `$SHELL -lc` from the repository root, capturing stdout/stderr
+  (capped), exit code, duration, timeout flag; configurable timeout
+  (120 s default) and output cap (32 KiB/stream); cancellation kills the
+  child process; failures are `is_error` results so the model can react
+- Harness: tool cancellation now aborts the turn instead of being fed back
+- End-to-end integration tests with the real tools on a temp repository:
+  read → edit → bash modifies the repo on disk; failing commands come back
+  as error results; tools never escape the repository
 
-Not yet implemented: `write`, `edit`, `bash`; `AgentHarness` cancellation
-propagation into tools; `CodingSession`; session persistence. See
+Not yet implemented: `CodingSession` (repository root, `AGENTS.md`, system
+prompt), session persistence, improved rendering, the REPL. See
 [Roadmap](#roadmap).
 
 ## Installation
@@ -190,10 +191,10 @@ Implemented:
 - [x] **M5** Agent/tool-call loop against a fake model
 - [x] **M6** Real DeepSeek client — `vava -p "say hello"` works
 - [x] **M7** `read` tool
+- [x] **M8** `write`, `edit`, `bash` tools; a real coding task works
 
 Planned, in order:
 
-- [ ] **M8** `write`, `edit`, `bash` tools; a real coding task works
 - [ ] **M9** `AgentHarness` with cancellation
 - [ ] **M10** `CodingSession`: repository root, `AGENTS.md`, system prompt
 - [ ] **M11** JSONL session persistence (`~/.local/share/vava/sessions/`)

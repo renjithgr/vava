@@ -12,6 +12,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use crate::ToolError;
 use crate::agent::AssistantBuilder;
 use crate::error::AgentError;
 use crate::event::{AgentEvent, ModelEvent};
@@ -117,7 +118,14 @@ impl AgentHarness {
                 break; // final response
             }
 
-            self.execute_tool_calls(&assistant, &event_tx).await;
+            if let Err(error) = self.execute_tool_calls(&assistant, &event_tx).await {
+                let _ = event_tx
+                    .send(AgentEvent::Error {
+                        message: error.to_string(),
+                    })
+                    .await;
+                return Err(error);
+            }
         }
 
         let _ = event_tx.send(AgentEvent::TurnCompleted).await;
@@ -185,16 +193,18 @@ impl AgentHarness {
 
     /// Execute every tool call of an assistant message, appending results
     /// to the transcript. Hard tool errors are converted into error results
-    /// so the model can see and react to them.
+    /// so the model can see and react to them — except cancellation, which
+    /// aborts the turn.
     async fn execute_tool_calls(
         &mut self,
         assistant: &AssistantMessage,
         event_tx: &mpsc::Sender<AgentEvent>,
-    ) {
+    ) -> Result<(), AgentError> {
         let context = ToolContext::new(self.root.clone(), self.cancellation.clone());
         for call in &assistant.tool_calls {
             let result = match self.tools.execute(call, &context).await {
                 Ok(result) => result,
+                Err(ToolError::Cancelled) => return Err(AgentError::Cancelled),
                 Err(error) => ToolResult::error(error.to_string()),
             };
             let _ = event_tx
@@ -208,5 +218,6 @@ impl AgentHarness {
                     call, result,
                 )));
         }
+        Ok(())
     }
 }

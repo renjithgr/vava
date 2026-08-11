@@ -15,4 +15,6 @@ thiserror.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+async-trait.workspace = true
+futures.workspace = true
 tokio-util.workspace = true

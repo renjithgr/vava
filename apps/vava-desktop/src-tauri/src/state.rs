@@ -10,13 +10,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex as AsyncMutex;
+use tauri::ipc::Channel;
+use tokio::sync::{Mutex as AsyncMutex, mpsc, watch};
+use tokio_util::sync::CancellationToken;
 
 use vava_coding::{CodingSession, ProjectContext, SessionId, SessionStore, SessionSummary};
-use vava_core::{Message, ModelClient};
+use vava_core::{AgentEvent, Message, ModelClient};
 use vava_deepseek::{DeepSeekClient, ModelConfig};
 
 use crate::errors::DesktopError;
+use crate::events::DesktopAgentEvent;
 use crate::model::{DesktopMessage, RecentRepository, RepositoryInfo, SessionInfo, SessionView};
 
 /// How many recent repositories to keep.
@@ -24,35 +27,88 @@ const MAX_RECENTS: usize = 10;
 
 /// Application-wide state managed by Tauri and handed to every command.
 pub struct DesktopState {
-    /// The currently open repository, if any.
-    active: AsyncMutex<Option<ActiveRepository>>,
+    /// The currently open repository, if any. Shared with turn tasks
+    /// via `Arc`, so a task can write the session back after finishing.
+    active: Arc<AsyncMutex<Option<ActiveRepository>>>,
     /// The persisted recent-repository list.
     recents: std::sync::Mutex<Recents>,
+    /// The platform session store (shared by all commands).
+    store: SessionStore,
+    /// The model client, when an API key is configured. Built once at
+    /// startup from the environment (like the CLI); D9 adds a settings
+    /// screen that rebuilds it from the keychain.
+    client: Option<Arc<dyn ModelClient>>,
 }
 
 /// The open repository and its session machinery.
 pub struct ActiveRepository {
     root: PathBuf,
     context: ProjectContext,
-    /// The active `CodingSession`, when a model client is available.
-    /// `None` while the repository is browsable but not yet prompt-ready
-    /// (no API key configured — D9 adds desktop settings).
+    /// The active `CodingSession`, while no turn is running. Moved into the
+    /// turn task during a turn and written back when it finishes.
     session: Option<CodingSession>,
+    /// The in-flight turn, if any. Only one turn executes at a time.
+    running_turn: Option<RunningTurn>,
+    /// Monotonic id for naming turns (used to detect stale write-backs).
+    next_turn_id: u64,
+}
+
+/// An in-flight agent turn.
+pub struct RunningTurn {
+    id: u64,
+    cancellation: CancellationToken,
+    /// The turn task sends on this channel after it has written the session
+    /// back into the repository state, so waiters know the turn is over.
+    completed: watch::Sender<()>,
+}
+
+/// Everything `send_prompt` extracted from the state to hand to the turn
+/// task: the session (moved out), the cancellation token, and the
+/// completion signal.
+pub struct TurnStart {
+    pub session: CodingSession,
+    pub id: u64,
+    pub token: CancellationToken,
+    pub completed: watch::Sender<()>,
 }
 
 impl Default for DesktopState {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("desktop state requires a session data directory")
     }
 }
 
 impl DesktopState {
     /// Create the initial application state.
-    pub fn new() -> Self {
-        Self {
-            active: AsyncMutex::new(None),
+    pub fn new() -> Result<Self, DesktopError> {
+        Ok(Self {
+            active: Arc::new(AsyncMutex::new(None)),
             recents: std::sync::Mutex::new(Recents::open()),
+            store: SessionStore::open()
+                .map_err(|error| DesktopError::Session(error.to_string()))?,
+            client: model_client_from_env(),
+        })
+    }
+
+    /// A state with injected store/recents/client (used by tests).
+    #[cfg(test)]
+    pub fn for_test(
+        store: SessionStore,
+        recents: Recents,
+        client: Option<Arc<dyn ModelClient>>,
+    ) -> Self {
+        Self {
+            active: Arc::new(AsyncMutex::new(None)),
+            recents: std::sync::Mutex::new(recents),
+            store,
+            client,
         }
+    }
+
+    /// The shared store handle (for tests).
+    #[cfg(test)]
+    pub fn store(&self) -> &SessionStore {
+        &self.store
     }
 
     /// Open the repository containing `path`.
@@ -62,17 +118,21 @@ impl DesktopState {
     /// the CLI), lists saved sessions, and records the repository in
     /// recents.
     pub async fn open_repository(&self, path: &str) -> Result<RepositoryInfo, DesktopError> {
-        let store =
-            SessionStore::open().map_err(|error| DesktopError::Session(error.to_string()))?;
-        let client = model_client_from_env();
         let opened = {
             let mut recents = self.recents.lock().unwrap();
-            open_repository_inner(Path::new(path), &store, &mut recents, client)?
+            open_repository_inner(
+                Path::new(path),
+                &self.store,
+                &mut recents,
+                self.client.clone(),
+            )?
         };
         *self.active.lock().await = Some(ActiveRepository {
             root: opened.context.root.clone(),
             context: opened.context,
             session: opened.session,
+            running_turn: None,
+            next_turn_id: 0,
         });
         Ok(opened.info)
     }
@@ -83,9 +143,8 @@ impl DesktopState {
         let Some(active) = active.as_ref() else {
             return Ok(None);
         };
-        let store =
-            SessionStore::open().map_err(|error| DesktopError::Session(error.to_string()))?;
-        let sessions = store
+        let sessions = self
+            .store
             .list_for_repository(&active.root)
             .map_err(|error| DesktopError::Session(error.to_string()))?;
         let active_session_id = active
@@ -115,9 +174,8 @@ impl DesktopState {
     pub async fn list_sessions(&self) -> Result<Vec<SessionInfo>, DesktopError> {
         let active = self.active.lock().await;
         let repo = active.as_ref().ok_or(DesktopError::NoRepository)?;
-        let store =
-            SessionStore::open().map_err(|error| DesktopError::Session(error.to_string()))?;
-        let sessions = store
+        let sessions = self
+            .store
             .list_for_repository(&repo.root)
             .map_err(|error| DesktopError::Session(error.to_string()))?;
         Ok(sessions.iter().map(session_info).collect())
@@ -126,27 +184,167 @@ impl DesktopState {
     /// Switch the active session to a previously persisted transcript (D3).
     ///
     /// Future messages are appended to the selected session's log; the
-    /// abandoned session is left untouched on disk. A running turn (D4+)
-    /// must be stopped before switching — the turn machinery lands with D4.
+    /// abandoned session is left untouched on disk. Any running turn is
+    /// cancelled first (Phase 7).
     pub async fn select_session(&self, id: &str) -> Result<SessionView, DesktopError> {
+        self.stop_running_turn().await?;
         let mut active = self.active.lock().await;
         let repo = active.as_mut().ok_or(DesktopError::NoRepository)?;
         let session = repo.session.as_mut().ok_or_else(no_api_key_error)?;
-        let store =
-            SessionStore::open().map_err(|error| DesktopError::Session(error.to_string()))?;
-        select_session_inner(session, &store, id)
+        select_session_inner(session, &self.store, id)
     }
 
     /// Start a brand-new session for the active repository (D3).
     ///
     /// Equivalent to the terminal `/new`: a fresh transcript, the previous
     /// session left untouched. Repository, project context, and file index
-    /// are preserved.
+    /// are preserved. Any running turn is cancelled first.
     pub async fn new_session(&self) -> Result<SessionView, DesktopError> {
+        self.stop_running_turn().await?;
         let mut active = self.active.lock().await;
         let repo = active.as_mut().ok_or(DesktopError::NoRepository)?;
         let session = repo.session.as_mut().ok_or_else(no_api_key_error)?;
         new_session_inner(session)
+    }
+
+    /// Run one user prompt (D4), streaming [`DesktopAgentEvent`]s to the
+    /// Tauri channel.
+    ///
+    /// Starts the turn immediately and returns; the frontend receives the
+    /// stream through the channel. Only one turn runs at a time: any
+    /// existing turn is cancelled and awaited first. The session is taken
+    /// out of the state for the duration of the turn and written back by
+    /// the turn task when it finishes.
+    pub async fn send_prompt(
+        &self,
+        session_id: &str,
+        input: &str,
+        channel: Channel<DesktopAgentEvent>,
+    ) -> Result<(), DesktopError> {
+        if input.trim().is_empty() {
+            return Err(DesktopError::Configuration(
+                "prompt must not be empty".into(),
+            ));
+        }
+        self.stop_running_turn().await?;
+        let start = self.begin_turn(session_id).await?;
+
+        // The event pipeline: harness events → mpsc → translation → Tauri
+        // channel. The turn task owns the session and returns it to the
+        // state when done.
+        let (event_tx, event_rx) = mpsc::channel(64);
+        tokio::spawn(forward_events(event_rx, channel));
+        let inner = self.active.clone();
+        tokio::spawn(run_turn(
+            inner,
+            start.session,
+            input.to_string(),
+            start.token,
+            start.id,
+            start.completed,
+            event_tx,
+        ));
+        Ok(())
+    }
+
+    /// Take the active session out of the state and register a running
+    /// turn for it. Rejects ids that are not the active session.
+    async fn begin_turn(&self, session_id: &str) -> Result<TurnStart, DesktopError> {
+        let mut guard = self.active.lock().await;
+        let repo = guard.as_mut().ok_or(DesktopError::NoRepository)?;
+        let session = repo.session.take().ok_or_else(no_api_key_error)?;
+        if session.session_id().as_str() != session_id {
+            repo.session = Some(session);
+            return Err(DesktopError::Session(format!(
+                "session `{session_id}` is not the active session"
+            )));
+        }
+        let id = {
+            repo.next_turn_id += 1;
+            repo.next_turn_id
+        };
+        let token = CancellationToken::new();
+        let (completed, _) = watch::channel(());
+        repo.running_turn = Some(RunningTurn {
+            id,
+            cancellation: token.clone(),
+            completed: completed.clone(),
+        });
+        Ok(TurnStart {
+            session,
+            id,
+            token,
+            completed,
+        })
+    }
+
+    /// Cancel any running turn and wait until the session has been written
+    /// back into the state. Used before switching sessions or starting a
+    /// new turn, so the state never holds two turns or loses a session.
+    pub async fn stop_running_turn(&self) -> Result<(), DesktopError> {
+        let subscription = {
+            let mut guard = self.active.lock().await;
+            let repo = guard.as_mut().ok_or(DesktopError::NoRepository)?;
+            match repo.running_turn.as_ref() {
+                Some(turn) => {
+                    tracing::debug!(turn_id = turn.id, "cancelling running turn");
+                    turn.cancellation.cancel();
+                    Some(turn.completed.subscribe())
+                }
+                None => None,
+            }
+        };
+        let Some(mut completed) = subscription else {
+            return Ok(());
+        };
+        loop {
+            {
+                let guard = self.active.lock().await;
+                let clear = guard
+                    .as_ref()
+                    .map(|repo| repo.running_turn.is_none())
+                    .unwrap_or(true);
+                if clear {
+                    return Ok(());
+                }
+            }
+            if completed.has_changed().unwrap_or(true) {
+                continue;
+            }
+            if completed.changed().await.is_err() {
+                // The turn task is gone; nothing more to wait for.
+                return Ok(());
+            }
+        }
+    }
+
+    /// Cancel the running turn without waiting (the frontend Stop button).
+    /// The turn ends asynchronously; the session is written back by the
+    /// turn task and the harness streams an error event.
+    pub async fn cancel_turn(&self) -> Result<(), DesktopError> {
+        let guard = self.active.lock().await;
+        let repo = guard.as_ref().ok_or(DesktopError::NoRepository)?;
+        if let Some(turn) = repo.running_turn.as_ref() {
+            tracing::debug!(turn_id = turn.id, "cancelling running turn (stop)");
+            turn.cancellation.cancel();
+        }
+        Ok(())
+    }
+
+    /// Whether the active session is currently in the state (tests).
+    #[cfg(test)]
+    pub async fn active_session_present(&self) -> bool {
+        let guard = self.active.lock().await;
+        guard
+            .as_ref()
+            .map(|repo| repo.session.is_some())
+            .unwrap_or(false)
+    }
+
+    /// A clone of the active-state handle, for spawning turn tasks (tests).
+    #[cfg(test)]
+    pub fn active_handle(&self) -> Arc<AsyncMutex<Option<ActiveRepository>>> {
+        Arc::clone(&self.active)
     }
 }
 
@@ -243,6 +441,51 @@ fn build_session_view(summary: &SessionSummary, messages: &[Message]) -> Session
 /// The user-facing error when no model client is available.
 fn no_api_key_error() -> DesktopError {
     DesktopError::Configuration("DeepSeek API key is not configured.".into())
+}
+
+/// Run one agent turn to completion, then return the session to the state.
+///
+/// Owns the session for the duration of the turn; the harness streams
+/// [`AgentEvent`]s through `event_tx`. On completion (success, error, or
+/// cancellation) the session is written back into `inner` and the
+/// completion channel is signaled, so waiters (session switches, the next
+/// turn) know the turn is over. The write-back is skipped only if a newer
+/// turn has already claimed the slot (defensive — callers serialize turns
+/// through `stop_running_turn`, so this never happens in practice).
+pub async fn run_turn(
+    inner: Arc<AsyncMutex<Option<ActiveRepository>>>,
+    mut session: CodingSession,
+    input: String,
+    token: CancellationToken,
+    turn_id: u64,
+    completed_tx: watch::Sender<()>,
+    event_tx: mpsc::Sender<AgentEvent>,
+) {
+    let result = session.prompt(input, event_tx, token).await;
+    if let Err(error) = &result {
+        tracing::debug!(%error, "turn finished with error");
+    }
+    {
+        let mut guard = inner.lock().await;
+        if let Some(repo) = guard.as_mut()
+            && repo.running_turn.as_ref().map(|turn| turn.id) == Some(turn_id)
+        {
+            repo.session = Some(session);
+            repo.running_turn = None;
+        }
+    }
+    let _ = completed_tx.send(());
+}
+
+/// Translate harness events to desktop IPC events and send them to the
+/// Tauri channel until the stream ends or the frontend disconnects.
+async fn forward_events(mut rx: mpsc::Receiver<AgentEvent>, channel: Channel<DesktopAgentEvent>) {
+    while let Some(event) = rx.recv().await {
+        if channel.send(DesktopAgentEvent::from(&event)).is_err() {
+            tracing::debug!("frontend event channel closed; stopping forwarding");
+            break;
+        }
+    }
 }
 
 /// Build the IPC view of a repository and its sessions.
@@ -489,6 +732,53 @@ mod tests {
         }
     }
 
+    /// A model client that plays back scripted events, then ends the
+    /// stream.
+    struct ScriptedClient {
+        events: Vec<ModelEvent>,
+    }
+
+    impl ScriptedClient {
+        fn new(events: Vec<ModelEvent>) -> Self {
+            Self { events }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ModelClient for ScriptedClient {
+        async fn stream(
+            &self,
+            _messages: &[Message],
+            _system: &str,
+            _tools: &[ToolDefinition],
+        ) -> Result<
+            BoxStream<'static, Result<ModelEvent, vava_core::BoxedError>>,
+            vava_core::BoxedError,
+        > {
+            let events = self.events.clone();
+            Ok(Box::pin(futures::stream::iter(events.into_iter().map(Ok))))
+        }
+    }
+
+    /// A model client whose stream never produces anything, so the turn
+    /// only ends through cancellation.
+    struct PendingClient;
+
+    #[async_trait::async_trait]
+    impl ModelClient for PendingClient {
+        async fn stream(
+            &self,
+            _messages: &[Message],
+            _system: &str,
+            _tools: &[ToolDefinition],
+        ) -> Result<
+            BoxStream<'static, Result<ModelEvent, vava_core::BoxedError>>,
+            vava_core::BoxedError,
+        > {
+            Ok(Box::pin(futures::stream::pending()))
+        }
+    }
+
     fn user(content: &str) -> Message {
         Message::User(UserMessage {
             content: content.into(),
@@ -726,5 +1016,127 @@ mod tests {
         assert_eq!(session.root(), repo.path());
         // The previous session still exists in the store.
         assert!(store.load(&SessionId::new(first_id)).is_ok());
+    }
+
+    /// A repository with a `.git` marker plus a state wired to it.
+    async fn opened_state(
+        store: SessionStore,
+        client: Arc<dyn ModelClient>,
+    ) -> (DesktopState, String) {
+        let repo = TestDir::new();
+        std::fs::create_dir_all(repo.child(".git")).unwrap();
+        let state = DesktopState::for_test(store, Recents::in_memory(), Some(client));
+        let info = state
+            .open_repository(repo.path().to_str().unwrap())
+            .await
+            .unwrap();
+        let session_id = info
+            .active_session_id
+            .expect("a session is created at open");
+        (state, session_id)
+    }
+
+    #[tokio::test]
+    async fn run_turn_streams_events_and_returns_the_session() {
+        let (store, _dir) = test_store();
+        let client = Arc::new(ScriptedClient::new(vec![
+            ModelEvent::TextDelta("Hello ".into()),
+            ModelEvent::TextDelta("world".into()),
+            ModelEvent::Finished,
+        ]));
+        let (state, session_id) = opened_state(store.clone(), client).await;
+
+        let start = state.begin_turn(&session_id).await.unwrap();
+        assert!(
+            !state.active_session_present().await,
+            "session is out during the turn"
+        );
+        let (event_tx, mut event_rx) = mpsc::channel(64);
+        let mut completed_rx = start.completed.subscribe();
+        let inner = state.active_handle();
+        tokio::spawn(run_turn(
+            inner,
+            start.session,
+            "hello".into(),
+            start.token,
+            start.id,
+            start.completed,
+            event_tx,
+        ));
+
+        // Collect events until the turn completes.
+        let mut saw_turn_started = false;
+        let mut text = String::new();
+        let mut saw_completed = false;
+        while let Some(event) = event_rx.recv().await {
+            match &event {
+                AgentEvent::TurnStarted => saw_turn_started = true,
+                AgentEvent::TextDelta { delta } => text.push_str(delta),
+                AgentEvent::AssistantMessageCompleted { message } => {
+                    saw_completed = true;
+                    assert_eq!(message.content, "Hello world");
+                }
+                AgentEvent::TurnCompleted => break,
+                _ => {}
+            }
+        }
+        assert!(saw_turn_started);
+        assert_eq!(text, "Hello world");
+        assert!(saw_completed);
+
+        // The task wrote the session back and signaled completion.
+        let _ = completed_rx.changed().await;
+        assert!(state.active_session_present().await);
+        // The turn was persisted to the session log.
+        let loaded = store.load(&SessionId::new(&session_id)).unwrap();
+        assert_eq!(loaded.messages.len(), 2); // user + assistant
+    }
+
+    #[tokio::test]
+    async fn stop_running_turn_cancels_and_returns_the_session() {
+        let (store, _dir) = test_store();
+        let (state, session_id) = opened_state(store, Arc::new(PendingClient)).await;
+
+        let start = state.begin_turn(&session_id).await.unwrap();
+        let (event_tx, _event_rx) = mpsc::channel(64);
+        let inner = state.active_handle();
+        tokio::spawn(run_turn(
+            inner,
+            start.session,
+            "never ends".into(),
+            start.token,
+            start.id,
+            start.completed,
+            event_tx,
+        ));
+
+        // Give the task a moment to start, then stop the turn.
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert!(!state.active_session_present().await);
+        state.stop_running_turn().await.unwrap();
+        assert!(
+            state.active_session_present().await,
+            "session is back after stop"
+        );
+        // The session is still usable for the next turn.
+        let start = state.begin_turn(&session_id).await.unwrap();
+        assert_eq!(start.session.session_id().as_str(), session_id);
+    }
+
+    #[tokio::test]
+    async fn begin_turn_rejects_a_stale_session_id() {
+        let (store, _dir) = test_store();
+        let client = Arc::new(FakeClient);
+        let (state, session_id) = opened_state(store, client).await;
+
+        let err = match state.begin_turn("not-the-active-session").await {
+            Ok(_) => panic!("expected a session error"),
+            Err(err) => err,
+        };
+        assert!(matches!(err, DesktopError::Session(_)));
+        // The session was not lost.
+        assert!(state.active_session_present().await);
+        // And the real id still works.
+        assert!(state.begin_turn(&session_id).await.is_ok());
     }
 }

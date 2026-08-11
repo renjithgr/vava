@@ -289,7 +289,7 @@ Implemented:
       workspace integration, `get_version` IPC round trip
 - [x] **D2** Repository opening, recent repositories
 - [x] **D3** Sessions: list, select, new, resume
-- [ ] **D4** Prompt execution with live streaming
+- [x] **D4** Prompt execution with live streaming
 - [ ] **D5** Tool cards (read/write/edit/bash)
 - [ ] **D6** Cancellation
 - [ ] **D7** Diffs and the Changes panel

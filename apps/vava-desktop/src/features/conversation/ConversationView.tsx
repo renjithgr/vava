@@ -2,14 +2,17 @@ import type { DesktopMessage } from "../../lib/ipc";
 import { useSessionStore } from "../../stores/session";
 
 /**
- * The conversation panel: renders the active session's transcript.
+ * The conversation panel: the active session's transcript plus the live
+ * streaming assistant message (D4).
  *
- * D3 renders the persisted transcript read-only. D4 streams live deltas
- * into the same view; D5 replaces the tool rows below with proper tool
- * cards.
+ * Subscriptions are narrow — only the streaming bubble re-renders per text
+ * delta; the persisted message list re-renders on message boundaries.
  */
 export function ConversationView() {
-  const { activeSession, error } = useSessionStore();
+  const activeSession = useSessionStore((state) => state.activeSession);
+  const streaming = useSessionStore((state) => state.streaming);
+  const error = useSessionStore((state) => state.error);
+  const toolResults = useSessionStore((state) => state.toolResults);
 
   if (error) {
     return (
@@ -30,20 +33,26 @@ export function ConversationView() {
 
   return (
     <div className="conversation">
-      {activeSession.messages.length === 0 && (
+      {activeSession.messages.length === 0 && !streaming && (
         <div className="conversation-empty">
-          This session has no messages yet. Prompting arrives in the next
-          milestone.
+          This session has no messages yet. Ask vava something below.
         </div>
       )}
       {activeSession.messages.map((message, index) => (
-        <MessageRow key={index} message={message} />
+        <MessageRow key={index} message={message} toolResults={toolResults} />
       ))}
+      {streaming && <StreamingMessage />}
     </div>
   );
 }
 
-function MessageRow({ message }: { message: DesktopMessage }) {
+function MessageRow({
+  message,
+  toolResults,
+}: {
+  message: DesktopMessage;
+  toolResults: Record<string, { content: string; isError: boolean }>;
+}) {
   switch (message.type) {
     case "user":
       return (
@@ -73,6 +82,17 @@ function MessageRow({ message }: { message: DesktopMessage }) {
                   <span className="tool-call-args">
                     {JSON.stringify(call.arguments)}
                   </span>
+                  {toolResults[call.id] && (
+                    <pre
+                      className={
+                        toolResults[call.id].isError
+                          ? "tool-call-result tool-call-result-error"
+                          : "tool-call-result"
+                      }
+                    >
+                      {toolResults[call.id].content}
+                    </pre>
+                  )}
                 </div>
               ))}
             </div>
@@ -95,4 +115,53 @@ function MessageRow({ message }: { message: DesktopMessage }) {
         </div>
       );
   }
+}
+
+/** The live partial assistant message while a turn streams. */
+function StreamingMessage() {
+  const streaming = useSessionStore((state) => state.streaming);
+  if (!streaming) return null;
+
+  return (
+    <div className="message message-assistant message-streaming">
+      <div className="message-label">Assistant</div>
+      {streaming.reasoning !== "" && (
+        <details className="reasoning">
+          <summary>Reasoning</summary>
+          <pre>{streaming.reasoning}</pre>
+        </details>
+      )}
+      {streaming.content !== "" && (
+        <div className="message-content">
+          {streaming.content}
+          <span className="caret" />
+        </div>
+      )}
+      {streaming.toolCalls.map((call) => (
+        <div key={call.callId} className="tool-call">
+          <span className="tool-call-name">{call.tool}</span>
+          {call.input !== null && (
+            <span className="tool-call-args">{JSON.stringify(call.input)}</span>
+          )}
+          {call.result && (
+            <pre
+              className={
+                call.result.isError
+                  ? "tool-call-result tool-call-result-error"
+                  : "tool-call-result"
+              }
+            >
+              {call.result.content}
+            </pre>
+          )}
+          {!call.result && <span className="tool-call-working">working…</span>}
+        </div>
+      ))}
+      {streaming.content === "" && streaming.reasoning === "" && streaming.toolCalls.length === 0 && (
+        <div className="message-content">
+          <span className="caret" />
+        </div>
+      )}
+    </div>
+  );
 }

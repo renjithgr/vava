@@ -6,8 +6,10 @@
 //! Commands grow with the milestones (sessions in D3, send_prompt in D4, …).
 
 use tauri::State;
+use tauri::ipc::Channel;
 
 use crate::errors::DesktopError;
+use crate::events::DesktopAgentEvent;
 use crate::model::{RecentRepository, RepositoryInfo, SessionInfo, SessionView};
 use crate::state::DesktopState;
 
@@ -76,6 +78,25 @@ pub async fn select_session(
 #[tauri::command]
 pub async fn new_session(state: State<'_, DesktopState>) -> Result<SessionView, DesktopError> {
     state.new_session().await
+}
+
+/// Run one prompt on the active session (D4), streaming agent events to
+/// the Tauri channel. Returns once the turn has started; the stream carries
+/// the turn's outcome.
+#[tauri::command]
+pub async fn send_prompt(
+    session_id: String,
+    input: String,
+    channel: Channel<DesktopAgentEvent>,
+    state: State<'_, DesktopState>,
+) -> Result<(), DesktopError> {
+    state.send_prompt(&session_id, &input, channel).await
+}
+
+/// Cancel the running turn (the frontend Stop button).
+#[tauri::command]
+pub async fn cancel_turn(state: State<'_, DesktopState>) -> Result<(), DesktopError> {
+    state.cancel_turn().await
 }
 
 #[cfg(test)]

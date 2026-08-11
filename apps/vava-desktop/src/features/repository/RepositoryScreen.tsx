@@ -1,18 +1,19 @@
-import { StatusBanner } from "../../components/StatusBanner";
+import { useEffect } from "react";
+import { PromptEditor } from "../../components/PromptEditor";
 import { SessionSidebar } from "../../components/SessionSidebar";
+import { StatusBanner } from "../../components/StatusBanner";
 import { useRepositoryStore } from "../../stores/repository";
 import { useSessionStore } from "../../stores/session";
 import { ConversationView } from "../conversation/ConversationView";
-import { useEffect } from "react";
 
 /**
- * The main workspace layout (Phase 6): titlebar, session sidebar, and the
- * conversation panel. D3 fills the conversation with the persisted
- * transcript; the prompt bar arrives with D4.
+ * The main workspace layout (Phase 6): titlebar, session sidebar, the
+ * conversation panel, and the prompt bar (D4).
  */
 export function RepositoryScreen() {
   const { active, opening, error, openRepository, clearError } =
     useRepositoryStore();
+  const running = useSessionStore((state) => state.running);
 
   // Reload the session sidebar whenever the active repository changes
   // (including re-opening the same folder, which starts a fresh session).
@@ -29,6 +30,7 @@ export function RepositoryScreen() {
         <span className="repo-name" title={active.root}>
           {active.name}
         </span>
+        {running && <span className="working">working…</span>}
         <span className="spacer" />
         <button
           className="ghost"
@@ -50,7 +52,10 @@ export function RepositoryScreen() {
 
       <div className="app-body">
         <SessionSidebar />
-        <ConversationView />
+        <div className="main-column">
+          <ConversationView />
+          <PromptEditor />
+        </div>
       </div>
     </main>
   );

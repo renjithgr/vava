@@ -19,11 +19,18 @@ pub mod events;
 pub mod model;
 pub mod state;
 
+use tauri::Manager;
+
 /// Run the Tauri application.
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(state::DesktopState::new())
+        .setup(|app| {
+            // State construction can fail (no platform data directory);
+            // abort startup with the message rather than panic.
+            app.manage(state::DesktopState::new()?);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_version,
             commands::open_repository,
@@ -33,6 +40,8 @@ pub fn run() {
             commands::list_sessions,
             commands::select_session,
             commands::new_session,
+            commands::send_prompt,
+            commands::cancel_turn,
         ])
         .run(tauri::generate_context!())
         .expect("error while running vava desktop");

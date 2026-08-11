@@ -5,7 +5,7 @@
  * never call `invoke` directly. The wrapper set grows with each milestone,
  * but the boundary stays in one place so the Tauri surface is easy to audit.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 
 /** One saved session, as shown in the session sidebar. */
@@ -67,6 +67,30 @@ export interface SessionView {
   messages: DesktopMessage[];
 }
 
+/**
+ * One event streamed from the agent harness to React during a turn.
+ * Payload fields are camelCase; transcript messages embedded in
+ * `assistant_message_completed` keep the snake_case persistence shape.
+ */
+export type DesktopAgentEvent =
+  | { type: "turn_started" }
+  | { type: "text_delta"; delta: string }
+  | { type: "reasoning_delta"; delta: string }
+  | {
+      type: "tool_call_started";
+      callId: string;
+      tool: string;
+      input: unknown;
+    }
+  | {
+      type: "tool_call_finished";
+      callId: string;
+      result: { content: string; isError: boolean };
+    }
+  | { type: "assistant_message_completed"; message: DesktopMessage }
+  | { type: "turn_completed" }
+  | { type: "error"; message: string };
+
 export const ipc = {
   /** The desktop app version, proving the Rust ↔ React round trip. */
   getVersion: () => invoke<string>("get_version"),
@@ -105,4 +129,17 @@ export const ipc = {
 
   /** Start a brand-new session and return it (empty transcript). */
   newSession: () => invoke<SessionView>("new_session"),
+
+  /**
+   * Run one prompt on the active session, streaming agent events to the
+   * channel. Resolves once the turn has started.
+   */
+  sendPrompt: (
+    sessionId: string,
+    input: string,
+    channel: Channel<DesktopAgentEvent>,
+  ) => invoke<void>("send_prompt", { sessionId, input, channel }),
+
+  /** Cancel the running turn (the Stop button). */
+  cancelTurn: () => invoke<void>("cancel_turn"),
 };

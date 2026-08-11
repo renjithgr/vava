@@ -105,25 +105,33 @@ impl From<&vava_core::Message> for DesktopMessage {
             M::User(user) => DesktopMessage::User {
                 content: user.content.clone(),
             },
-            M::Assistant(assistant) => DesktopMessage::Assistant {
-                content: assistant.content.clone(),
-                reasoning_content: assistant.reasoning_content.clone(),
-                tool_calls: assistant
-                    .tool_calls
-                    .iter()
-                    .map(|call| DesktopToolCall {
-                        id: call.id.clone(),
-                        name: call.name.clone(),
-                        arguments: call.arguments.clone(),
-                    })
-                    .collect(),
-            },
+            M::Assistant(assistant) => DesktopMessage::from_assistant(assistant),
             M::ToolResult(result) => DesktopMessage::ToolResult {
                 tool_call_id: result.tool_call_id.clone(),
                 tool_name: result.tool_name.clone(),
                 content: result.content.clone(),
                 is_error: result.is_error,
             },
+        }
+    }
+}
+
+impl DesktopMessage {
+    /// Convert a complete assistant message (used by the event boundary,
+    /// which receives `AssistantMessage` directly rather than `Message`).
+    pub fn from_assistant(assistant: &vava_core::AssistantMessage) -> Self {
+        DesktopMessage::Assistant {
+            content: assistant.content.clone(),
+            reasoning_content: assistant.reasoning_content.clone(),
+            tool_calls: assistant
+                .tool_calls
+                .iter()
+                .map(|call| DesktopToolCall {
+                    id: call.id.clone(),
+                    name: call.name.clone(),
+                    arguments: call.arguments.clone(),
+                })
+                .collect(),
         }
     }
 }

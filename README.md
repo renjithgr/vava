@@ -28,20 +28,33 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 13 of 14 — interactive REPL — complete.**
+**Milestone 14 of 14 — Ratatui TUI — complete. All milestones done.**
 
 Implemented:
 
-- `vava` with no prompt enters a REPL: banner, `> ` input, one session
-  reused across turns (transcript and session log accumulate)
-- Ctrl-C during a turn cancels it (fresh per-turn cancellation token, so a
-  cancelled turn never poisons the next); Ctrl-C while idle exits;
-  `quit`/`exit`/Ctrl-D also exit
-- Stdin read on a blocking thread so the runtime never stalls on input
-- Refactor: `prompt` now takes a per-call `CancellationToken` owned by the
-  caller — the harness/session no longer own cancellation
+- `vava --tui` enters a full-screen Ratatui frontend: title bar with the
+  model, a scrollable conversation panel, and an input line
+- The TUI reuses the exact print-mode rendering (same `Renderer`, events
+  buffered into the scrollback), so the core architecture is untouched
+- Ctrl-C cancels a running turn; Ctrl-C while idle exits; `quit`/`exit`
+  work too; `↑`/`↓`/`PageUp`/`PageDown` scroll
+- Terminal state (raw mode, alternate screen) is restored on every exit
+  path via a drop guard
 
-Not yet implemented: the Ratatui TUI (M14). See [Roadmap](#roadmap).
+The first usable release scenario works end to end:
+
+```bash
+cd some-rust-project
+export DEEPSEEK_API_KEY=...
+vava -p "Run the tests, identify the failure, fix it, and run the tests again."
+```
+
+with progress streaming to the terminal through `bash`, `read`, `edit`,
+`bash`, then a final response — in print, REPL, or TUI mode.
+
+**All 14 milestones complete.** The first usable release works end to end:
+print mode (`-p`), the REPL (`vava` with no prompt), and the Ratatui TUI
+(`vava --tui`). See [Roadmap](#roadmap) for the completed list.
 
 ## Installation
 
@@ -190,10 +203,7 @@ Implemented:
 - [x] **M11** JSONL session persistence (`~/.local/share/vava/sessions/`)
 - [x] **M12** Improved CLI rendering (debug/verbose reasoning output)
 - [x] **M13** Interactive REPL (`vava` with no prompt)
-
-Planned, in order:
-
-- [ ] **M14** Ratatui TUI consuming the same `AgentEvent` stream
+- [x] **M14** Ratatui TUI consuming the same `AgentEvent` stream
 
 Deliberately out of scope for v1: OpenAI/Anthropic/OpenRouter support, OAuth,
 databases, web servers, multi-provider abstractions, context compaction,

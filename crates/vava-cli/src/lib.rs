@@ -7,6 +7,7 @@
 
 pub mod render;
 pub mod repl;
+pub mod tui;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -52,6 +53,10 @@ pub struct Cli {
     /// Show reasoning content in the output.
     #[arg(long)]
     pub debug: bool,
+
+    /// Use the full-screen terminal UI instead of the plain REPL.
+    #[arg(long)]
+    pub tui: bool,
 }
 
 impl Cli {
@@ -79,6 +84,7 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
 
     match cli.prompt.clone() {
         Some(prompt) => run_print(session, prompt, cli.debug).await,
+        None if cli.tui => tui::run(session, &cli.model, cli.debug).await,
         None => repl::run(session, &cli.model, cli.debug).await,
     }
 }

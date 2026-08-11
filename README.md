@@ -28,23 +28,17 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 8 of 14 — all four coding tools — complete.**
+**Milestone 9 of 14 — `AgentHarness` with cancellation — complete.**
 
-Implemented:
+The harness (M5) and its tool-cancellation wiring (M8) are now fully rounded
+out:
 
-- `write`: create/overwrite UTF-8 files inside the root, parent dirs
-  created, atomic write (temp sibling + rename)
-- `edit`: exact string replacement — `old_text` must appear exactly once;
-  zero and ambiguous matches are both errors with guidance; no fuzzy
-  matching
-- `bash`: `$SHELL -lc` from the repository root, capturing stdout/stderr
-  (capped), exit code, duration, timeout flag; configurable timeout
-  (120 s default) and output cap (32 KiB/stream); cancellation kills the
-  child process; failures are `is_error` results so the model can react
-- Harness: tool cancellation now aborts the turn instead of being fed back
-- End-to-end integration tests with the real tools on a temp repository:
-  read → edit → bash modifies the repo on disk; failing commands come back
-  as error results; tools never escape the repository
+- `prompt` rejects an already-cancelled token up front
+- cancellation is tested end to end: a hung model stream aborts via
+  `tokio::select!` (M5 test), and a running `bash` process is killed when
+  the user cancels mid-turn (new integration test)
+- tool cancellation aborts the turn with `AgentError::Cancelled` rather
+  than being fed back to the model
 
 Not yet implemented: `CodingSession` (repository root, `AGENTS.md`, system
 prompt), session persistence, improved rendering, the REPL. See
@@ -192,10 +186,10 @@ Implemented:
 - [x] **M6** Real DeepSeek client — `vava -p "say hello"` works
 - [x] **M7** `read` tool
 - [x] **M8** `write`, `edit`, `bash` tools; a real coding task works
+- [x] **M9** `AgentHarness` with cancellation
 
 Planned, in order:
 
-- [ ] **M9** `AgentHarness` with cancellation
 - [ ] **M10** `CodingSession`: repository root, `AGENTS.md`, system prompt
 - [ ] **M11** JSONL session persistence (`~/.local/share/vava/sessions/`)
 - [ ] **M12** Improved CLI rendering (debug/verbose reasoning output)

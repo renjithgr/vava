@@ -239,3 +239,31 @@ async fn tools_never_escape_the_repository() {
 
     let _ = std::fs::remove_file(&outside);
 }
+
+/// Cancellation propagates from the harness through the registry into a
+/// running `bash` process, which is killed.
+#[tokio::test]
+async fn cancelling_during_a_bash_call_kills_the_process() {
+    let repo = TempRepo::new();
+    let model = ScriptedModel::new(vec![tool_turn("c1", "bash", r#"{"command":"sleep 30"}"#)]);
+
+    let mut registry = ToolRegistry::new();
+    register_coding_tools(&mut registry);
+    let mut harness = AgentHarness::new(
+        Arc::new(model),
+        registry,
+        "You are a coding agent.",
+        repo.path().to_path_buf(),
+    );
+
+    let token = harness.cancellation_token();
+    let (tx, _rx) = mpsc::channel(16);
+    let handle = tokio::spawn(async move { harness.prompt("do it".into(), tx).await });
+
+    // Give the model call and the spawned `sleep 30` a moment to start.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    token.cancel();
+
+    let result = handle.await.unwrap();
+    assert!(matches!(result, Err(AgentError::Cancelled)));
+}

@@ -90,6 +90,9 @@ impl AgentHarness {
         input: String,
         event_tx: mpsc::Sender<AgentEvent>,
     ) -> Result<(), AgentError> {
+        if self.cancellation.is_cancelled() {
+            return Err(AgentError::Cancelled);
+        }
         self.messages
             .push(Message::User(UserMessage { content: input }));
         let _ = event_tx.send(AgentEvent::TurnStarted).await;

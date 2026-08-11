@@ -87,7 +87,7 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
     });
 
     let (tx, rx) = mpsc::channel(64);
-    let renderer = tokio::spawn(render::render_events(rx, cli.debug));
+    let renderer = tokio::spawn(render::render_events(rx, cli.debug, prompt.clone()));
 
     let result = session.prompt(prompt, tx).await;
     ctrl_c.abort();

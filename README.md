@@ -28,27 +28,19 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 11 of 14 — JSONL session persistence — complete.**
+**Milestone 12 of 14 — improved CLI rendering — complete.**
 
 Implemented:
 
-- `SessionStore` / `SessionLog`: append-only JSONL logs under the platform
-  data dir (`~/.local/share/vava/sessions/` on Linux, `~/Library/Application
-  Support/vava/sessions/` on macOS)
-- Header record `{"type":"session","id":...,"cwd":...}`; message records
-  reuse the core serde representation, so `reasoning_content` survives by
-  construction
-- `CodingSession` wires a message sink into the harness: every completed
-  message is appended synchronously as it happens (tiny write + flush)
-- Replay reconstructs the transcript, tolerates a truncated final line
-  (crash mid-write), and reports corruption of middle records; `list`
-  enumerates sessions for the future `--resume`
-- 9 new tests: header shape, append/replay round trips, reasoning
-  survival, truncated-final-line tolerance, corruption detection, missing
-  sessions, listing, exact JSONL format, and a live session replay that
-  matches the transcript
+- Prompt header (`> …`), a single `Thinking...` marker per thinking episode
+  (reasoning text itself only with `--debug`)
+- Tool calls: `● name args` inline for path-style calls; `bash` commands on
+  their own indented line
+- Tool results shown indented (up to 8 lines, truncated with a count), with
+  blank-line block separation matching the spec's example rendering
+- 4 new renderer tests (plus updated ones)
 
-Not yet implemented: improved rendering, the REPL. See [Roadmap](#roadmap).
+Not yet implemented: the interactive REPL. See [Roadmap](#roadmap).
 
 ## Installation
 
@@ -195,10 +187,10 @@ Implemented:
 - [x] **M9** `AgentHarness` with cancellation
 - [x] **M10** `CodingSession`: repository root, `AGENTS.md`, system prompt
 - [x] **M11** JSONL session persistence (`~/.local/share/vava/sessions/`)
+- [x] **M12** Improved CLI rendering (debug/verbose reasoning output)
 
 Planned, in order:
 
-- [ ] **M12** Improved CLI rendering (debug/verbose reasoning output)
 - [ ] **M13** Interactive REPL (`vava` with no prompt)
 - [ ] **M14** Ratatui TUI consuming the same `AgentEvent` stream
 

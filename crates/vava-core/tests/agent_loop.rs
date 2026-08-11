@@ -17,6 +17,7 @@ use async_trait::async_trait;
 use futures::stream::{self, BoxStream};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use vava_core::{
     AgentError, AgentEvent, AgentHarness, AssistantMessage, Message, ModelClient, ModelEvent, Tool,
@@ -181,7 +182,7 @@ async fn run_prompt(
     let (tx, mut rx) = mpsc::channel(64);
     let input = input.to_string();
     let handle = tokio::spawn(async move {
-        let result = harness.prompt(input, tx).await;
+        let result = harness.prompt(input, tx, CancellationToken::new()).await;
         (harness, result)
     });
     let mut events = Vec::new();
@@ -449,10 +450,11 @@ async fn cancellation_stops_a_hung_model() {
         "sys",
         PathBuf::from("/tmp"),
     );
-    let token = harness.cancellation_token();
+    let token = CancellationToken::new();
+    let token_for_task = token.clone();
     let (tx, _rx) = mpsc::channel(16);
 
-    let handle = tokio::spawn(async move { harness.prompt("hi".into(), tx).await });
+    let handle = tokio::spawn(async move { harness.prompt("hi".into(), tx, token_for_task).await });
     tokio::time::sleep(Duration::from_millis(20)).await;
     token.cancel();
     let result = handle.await.unwrap();

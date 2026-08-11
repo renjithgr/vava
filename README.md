@@ -28,19 +28,20 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 12 of 14 — improved CLI rendering — complete.**
+**Milestone 13 of 14 — interactive REPL — complete.**
 
 Implemented:
 
-- Prompt header (`> …`), a single `Thinking...` marker per thinking episode
-  (reasoning text itself only with `--debug`)
-- Tool calls: `● name args` inline for path-style calls; `bash` commands on
-  their own indented line
-- Tool results shown indented (up to 8 lines, truncated with a count), with
-  blank-line block separation matching the spec's example rendering
-- 4 new renderer tests (plus updated ones)
+- `vava` with no prompt enters a REPL: banner, `> ` input, one session
+  reused across turns (transcript and session log accumulate)
+- Ctrl-C during a turn cancels it (fresh per-turn cancellation token, so a
+  cancelled turn never poisons the next); Ctrl-C while idle exits;
+  `quit`/`exit`/Ctrl-D also exit
+- Stdin read on a blocking thread so the runtime never stalls on input
+- Refactor: `prompt` now takes a per-call `CancellationToken` owned by the
+  caller — the harness/session no longer own cancellation
 
-Not yet implemented: the interactive REPL. See [Roadmap](#roadmap).
+Not yet implemented: the Ratatui TUI (M14). See [Roadmap](#roadmap).
 
 ## Installation
 
@@ -188,10 +189,10 @@ Implemented:
 - [x] **M10** `CodingSession`: repository root, `AGENTS.md`, system prompt
 - [x] **M11** JSONL session persistence (`~/.local/share/vava/sessions/`)
 - [x] **M12** Improved CLI rendering (debug/verbose reasoning output)
+- [x] **M13** Interactive REPL (`vava` with no prompt)
 
 Planned, in order:
 
-- [ ] **M13** Interactive REPL (`vava` with no prompt)
 - [ ] **M14** Ratatui TUI consuming the same `AgentEvent` stream
 
 Deliberately out of scope for v1: OpenAI/Anthropic/OpenRouter support, OAuth,

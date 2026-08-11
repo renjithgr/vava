@@ -6,6 +6,7 @@
 //! protocol.
 
 pub mod render;
+pub mod repl;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -14,6 +15,7 @@ use anyhow::Context;
 use clap::Parser;
 use secrecy::SecretString;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use vava_deepseek::{DeepSeekClient, ModelConfig};
 
@@ -63,12 +65,8 @@ impl Cli {
     }
 }
 
-/// Wire everything together and execute the prompt.
+/// Wire everything together and run in print or REPL mode.
 pub async fn run(cli: Cli) -> anyhow::Result<()> {
-    let Some(prompt) = cli.prompt.clone() else {
-        anyhow::bail!("interactive mode is not implemented yet; pass -p/--prompt");
-    };
-
     let api_key = std::env::var("DEEPSEEK_API_KEY")
         .context("DEEPSEEK_API_KEY is not set (export it before running vava)")?;
 
@@ -77,19 +75,34 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
 
     let root = cli.cwd.clone().unwrap_or(std::env::current_dir()?);
     let client: Arc<dyn vava_core::ModelClient> = Arc::new(client);
-    let mut session = vava_coding::CodingSession::open(client, &root)?;
+    let session = vava_coding::CodingSession::open(client, &root)?;
 
+    match cli.prompt.clone() {
+        Some(prompt) => run_print(session, prompt, cli.debug).await,
+        None => repl::run(session, &cli.model, cli.debug).await,
+    }
+}
+
+/// One-shot print mode: run the prompt, render events, exit.
+async fn run_print(
+    mut session: vava_coding::CodingSession,
+    prompt: String,
+    debug: bool,
+) -> anyhow::Result<()> {
     // Ctrl-C cancels the in-flight turn.
-    let token = session.cancellation_token();
-    let ctrl_c = tokio::spawn(async move {
-        let _ = tokio::signal::ctrl_c().await;
-        token.cancel();
+    let token = CancellationToken::new();
+    let ctrl_c = tokio::spawn({
+        let token = token.clone();
+        async move {
+            let _ = tokio::signal::ctrl_c().await;
+            token.cancel();
+        }
     });
 
     let (tx, rx) = mpsc::channel(64);
-    let renderer = tokio::spawn(render::render_events(rx, cli.debug, prompt.clone()));
+    let renderer = tokio::spawn(render::render_events(rx, debug, Some(prompt.clone())));
 
-    let result = session.prompt(prompt, tx).await;
+    let result = session.prompt(prompt, tx, token).await;
     ctrl_c.abort();
     renderer.await.ok();
     result.map_err(anyhow::Error::from)

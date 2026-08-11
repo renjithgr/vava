@@ -44,7 +44,6 @@ pub struct AgentHarness {
     system_prompt: String,
     /// The workspace boundary handed to tools via [`ToolContext`].
     root: PathBuf,
-    cancellation: CancellationToken,
     /// Optional callback receiving a copy of every completed transcript
     /// message (used by `CodingSession` for JSONL persistence).
     message_sink: Option<MessageSink>,
@@ -63,7 +62,6 @@ impl AgentHarness {
             tools,
             system_prompt: system_prompt.into(),
             root,
-            cancellation: CancellationToken::new(),
             message_sink: None,
         }
     }
@@ -89,22 +87,13 @@ impl AgentHarness {
         &self.messages
     }
 
-    /// A handle to the harness's cancellation token.
-    ///
-    /// Clone it and cancel from elsewhere (e.g. a Ctrl-C task) to stop the
-    /// in-flight `prompt` call. Cancellation propagates into the model
-    /// stream and into tool execution.
-    pub fn cancellation_token(&self) -> CancellationToken {
-        self.cancellation.clone()
-    }
-
-    /// Cancel the current operation.
-    pub fn cancel(&self) {
-        self.cancellation.cancel();
-    }
-
     /// Run one user prompt to completion: model turns, tool calls, and the
     /// final answer, streaming [`AgentEvent`]s to `event_tx`.
+    ///
+    /// `cancellation` scopes this single call: cancel it (from a Ctrl-C
+    /// task, say) to stop the model stream and any running tools. The
+    /// caller owns the token, so each call can get a fresh one — a
+    /// cancelled turn never poisons the next.
     ///
     /// Returns `Ok` when the agent produced a final response. On error
     /// (cancellation, model client failure) an `AgentEvent::Error` is
@@ -113,15 +102,16 @@ impl AgentHarness {
         &mut self,
         input: String,
         event_tx: mpsc::Sender<AgentEvent>,
+        cancellation: CancellationToken,
     ) -> Result<(), AgentError> {
-        if self.cancellation.is_cancelled() {
+        if cancellation.is_cancelled() {
             return Err(AgentError::Cancelled);
         }
         self.record(Message::User(UserMessage { content: input }));
         let _ = event_tx.send(AgentEvent::TurnStarted).await;
 
         loop {
-            let assistant = match self.run_turn(&event_tx).await {
+            let assistant = match self.run_turn(&event_tx, &cancellation).await {
                 Ok(assistant) => assistant,
                 Err(error) => {
                     let _ = event_tx
@@ -144,7 +134,10 @@ impl AgentHarness {
                 break; // final response
             }
 
-            if let Err(error) = self.execute_tool_calls(&assistant, &event_tx).await {
+            if let Err(error) = self
+                .execute_tool_calls(&assistant, &event_tx, &cancellation)
+                .await
+            {
                 let _ = event_tx
                     .send(AgentEvent::Error {
                         message: error.to_string(),
@@ -163,6 +156,7 @@ impl AgentHarness {
     async fn run_turn(
         &self,
         event_tx: &mpsc::Sender<AgentEvent>,
+        cancellation: &CancellationToken,
     ) -> Result<AssistantMessage, AgentError> {
         let tools = self.tools.definitions();
         let mut stream = self
@@ -175,7 +169,7 @@ impl AgentHarness {
         loop {
             let event = tokio::select! {
                 biased;
-                _ = self.cancellation.cancelled() => {
+                _ = cancellation.cancelled() => {
                     return Err(AgentError::Cancelled);
                 }
                 next = stream.next() => {
@@ -225,8 +219,9 @@ impl AgentHarness {
         &mut self,
         assistant: &AssistantMessage,
         event_tx: &mpsc::Sender<AgentEvent>,
+        cancellation: &CancellationToken,
     ) -> Result<(), AgentError> {
-        let context = ToolContext::new(self.root.clone(), self.cancellation.clone());
+        let context = ToolContext::new(self.root.clone(), cancellation.clone());
         for call in &assistant.tool_calls {
             let result = match self.tools.execute(call, &context).await {
                 Ok(result) => result,

@@ -89,10 +89,12 @@ impl Renderer {
 pub async fn render_events(
     mut rx: mpsc::Receiver<AgentEvent>,
     show_reasoning: bool,
-    prompt: String,
+    prompt: Option<String>,
 ) {
     let mut renderer = Renderer::new(show_reasoning);
-    {
+    // In print mode the prompt is a header; in the REPL the terminal has
+    // already echoed the typed line, so it is passed as `None`.
+    if let Some(prompt) = prompt {
         let stdout = std::io::stdout();
         let mut out = stdout.lock();
         let _ = renderer.render_prompt(&prompt, &mut out);

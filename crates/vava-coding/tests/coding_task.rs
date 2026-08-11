@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use async_trait::async_trait;
 use futures::stream::{self, BoxStream};
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use vava_coding::tools::register_coding_tools;
 use vava_core::{
@@ -107,7 +108,9 @@ async fn run_prompt(
     input: &str,
 ) -> (AgentHarness, Vec<AgentEvent>, Result<(), AgentError>) {
     let (tx, mut rx) = mpsc::channel(64);
-    let result = harness.prompt(input.to_string(), tx).await;
+    let result = harness
+        .prompt(input.to_string(), tx, CancellationToken::new())
+        .await;
     let mut events = Vec::new();
     while let Some(event) = rx.recv().await {
         events.push(event);
@@ -256,9 +259,11 @@ async fn cancelling_during_a_bash_call_kills_the_process() {
         repo.path().to_path_buf(),
     );
 
-    let token = harness.cancellation_token();
+    let token = CancellationToken::new();
+    let token_for_task = token.clone();
     let (tx, _rx) = mpsc::channel(16);
-    let handle = tokio::spawn(async move { harness.prompt("do it".into(), tx).await });
+    let handle =
+        tokio::spawn(async move { harness.prompt("do it".into(), tx, token_for_task).await });
 
     // Give the model call and the spawned `sleep 30` a moment to start.
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -294,7 +299,9 @@ async fn coding_session_discovers_root_and_agmd() {
     assert_eq!(session.context().agents_md.as_deref(), Some("Use tabs.\n"));
 
     let (tx, mut rx) = mpsc::channel(64);
-    let result = session.prompt("read notes".into(), tx).await;
+    let result = session
+        .prompt("read notes".into(), tx, CancellationToken::new())
+        .await;
     result.unwrap();
     while rx.recv().await.is_some() {}
 
@@ -329,7 +336,10 @@ async fn session_is_persisted_and_replays() {
         vava_coding::CodingSession::open_with_store(client, repo.path(), store).unwrap();
 
     let (tx, mut rx) = mpsc::channel(64);
-    session.prompt("check the notes".into(), tx).await.unwrap();
+    session
+        .prompt("check the notes".into(), tx, CancellationToken::new())
+        .await
+        .unwrap();
     while rx.recv().await.is_some() {}
 
     // Replay the log and compare to the live transcript.

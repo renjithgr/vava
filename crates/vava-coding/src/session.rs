@@ -102,22 +102,16 @@ impl CodingSession {
         &self.session_store
     }
 
-    /// A handle to the session's cancellation token.
-    pub fn cancellation_token(&self) -> CancellationToken {
-        self.harness.cancellation_token()
-    }
-
-    /// Cancel the current operation.
-    pub fn cancel(&self) {
-        self.harness.cancel();
-    }
-
     /// Run one user prompt to completion, streaming [`AgentEvent`]s.
+    ///
+    /// `cancellation` scopes this single call; the caller owns it so each
+    /// turn can get a fresh token.
     pub async fn prompt(
         &mut self,
         input: String,
         event_tx: mpsc::Sender<AgentEvent>,
+        cancellation: CancellationToken,
     ) -> Result<(), AgentError> {
-        self.harness.prompt(input, event_tx).await
+        self.harness.prompt(input, event_tx, cancellation).await
     }
 }

@@ -163,6 +163,9 @@ DeepSeek calls, cancellation) comes from the same `vava-coding` /
 The desktop app does not wrap the CLI executable and does not run an
 internal HTTP server; React and Rust communicate over Tauri IPC only.
 
+The working implementation plan (status, architecture map, D6–D10
+roadmap) lives in `apps/vava-desktop/PLAN.md`.
+
 ```bash
 cd apps/vava-desktop
 npm install

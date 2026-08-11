@@ -8,7 +8,7 @@
 use tauri::State;
 
 use crate::errors::DesktopError;
-use crate::model::{RecentRepository, RepositoryInfo};
+use crate::model::{RecentRepository, RepositoryInfo, SessionInfo, SessionView};
 use crate::state::DesktopState;
 
 /// The desktop app's version, from this crate's manifest.
@@ -53,6 +53,29 @@ pub fn list_recent_repositories(state: State<'_, DesktopState>) -> Vec<RecentRep
 #[tauri::command]
 pub fn remove_recent_repository(path: String, state: State<'_, DesktopState>) {
     state.remove_recent_repository(&path);
+}
+
+/// The active repository's sessions, newest first (D3).
+#[tauri::command]
+pub async fn list_sessions(
+    state: State<'_, DesktopState>,
+) -> Result<Vec<SessionInfo>, DesktopError> {
+    state.list_sessions().await
+}
+
+/// Switch the active session to a persisted transcript and return it (D3).
+#[tauri::command]
+pub async fn select_session(
+    session_id: String,
+    state: State<'_, DesktopState>,
+) -> Result<SessionView, DesktopError> {
+    state.select_session(&session_id).await
+}
+
+/// Start a brand-new session for the active repository and return it (D3).
+#[tauri::command]
+pub async fn new_session(state: State<'_, DesktopState>) -> Result<SessionView, DesktopError> {
+    state.new_session().await
 }
 
 #[cfg(test)]

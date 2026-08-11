@@ -33,6 +33,40 @@ export interface RecentRepository {
   exists: boolean;
 }
 
+/** One tool call within an assistant message. */
+export interface DesktopToolCall {
+  id: string;
+  name: string;
+  arguments: unknown;
+}
+
+/**
+ * One transcript message. The wire shape mirrors vava's JSONL persistence
+ * format (tagged `type`, snake_case fields) so the original textual
+ * session data is preserved exactly.
+ */
+export type DesktopMessage =
+  | { type: "user"; content: string }
+  | {
+      type: "assistant";
+      content: string;
+      reasoning_content?: string | null;
+      tool_calls?: DesktopToolCall[];
+    }
+  | {
+      type: "tool";
+      tool_call_id: string;
+      tool_name: string;
+      content: string;
+      is_error: boolean;
+    };
+
+/** A loaded session: its summary plus the restored transcript. */
+export interface SessionView {
+  session: SessionInfo;
+  messages: DesktopMessage[];
+}
+
 export const ipc = {
   /** The desktop app version, proving the Rust ↔ React round trip. */
   getVersion: () => invoke<string>("get_version"),
@@ -61,4 +95,14 @@ export const ipc = {
   /** Remove a repository from recents. */
   removeRecentRepository: (path: string) =>
     invoke<void>("remove_recent_repository", { path }),
+
+  /** The active repository's sessions, newest first. */
+  listSessions: () => invoke<SessionInfo[]>("list_sessions"),
+
+  /** Switch to a persisted session and return its restored transcript. */
+  selectSession: (sessionId: string) =>
+    invoke<SessionView>("select_session", { sessionId }),
+
+  /** Start a brand-new session and return it (empty transcript). */
+  newSession: () => invoke<SessionView>("new_session"),
 };

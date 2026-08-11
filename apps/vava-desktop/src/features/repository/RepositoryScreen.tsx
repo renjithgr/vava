@@ -1,25 +1,34 @@
 import { StatusBanner } from "../../components/StatusBanner";
-import { relativeTime } from "../../lib/time";
+import { SessionSidebar } from "../../components/SessionSidebar";
 import { useRepositoryStore } from "../../stores/repository";
+import { useSessionStore } from "../../stores/session";
+import { ConversationView } from "../conversation/ConversationView";
+import { useEffect } from "react";
 
 /**
- * The repository view after opening a folder: name, root, and its saved
- * sessions. D2 renders sessions read-only; D3 makes them selectable and
- * adds the session sidebar, and D4 adds the conversation.
+ * The main workspace layout (Phase 6): titlebar, session sidebar, and the
+ * conversation panel. D3 fills the conversation with the persisted
+ * transcript; the prompt bar arrives with D4.
  */
 export function RepositoryScreen() {
   const { active, opening, error, openRepository, clearError } =
     useRepositoryStore();
 
+  // Reload the session sidebar whenever the active repository changes
+  // (including re-opening the same folder, which starts a fresh session).
+  useEffect(() => {
+    if (active) void useSessionStore.getState().load();
+  }, [active]);
+
   if (!active) return null;
 
-  const count = active.sessions.length;
-
   return (
-    <main className="repo">
+    <main className="app">
       <header className="titlebar">
         <span className="brand">Vava</span>
-        <span className="repo-name">{active.name}</span>
+        <span className="repo-name" title={active.root}>
+          {active.name}
+        </span>
         <span className="spacer" />
         <button
           className="ghost"
@@ -39,39 +48,10 @@ export function RepositoryScreen() {
         </StatusBanner>
       )}
 
-      <section className="repo-body">
-        <div className="repo-header">
-          <h2 className="repo-title">{active.name}</h2>
-          <p className="repo-root">{active.root}</p>
-          <p className="repo-meta">
-            {count} session{count === 1 ? "" : "s"}
-            {active.activeSessionId ? " · active session ready" : ""}
-          </p>
-        </div>
-
-        <h3 className="panel-heading">Sessions</h3>
-        {count === 0 && <p className="empty">No sessions yet.</p>}
-        <ul className="sessions">
-          {active.sessions.map((session) => (
-            <li
-              key={session.id}
-              className={
-                session.id === active.activeSessionId
-                  ? "session session-active"
-                  : "session"
-              }
-            >
-              <span className="session-title">
-                {session.firstUserMessage ?? "(empty session)"}
-              </span>
-              <span className="session-time">
-                {relativeTime(session.updatedAt)}
-              </span>
-            </li>
-          ))}
-        </ul>
-        <p className="note">Session management arrives in the next milestone.</p>
-      </section>
+      <div className="app-body">
+        <SessionSidebar />
+        <ConversationView />
+      </div>
     </main>
   );
 }

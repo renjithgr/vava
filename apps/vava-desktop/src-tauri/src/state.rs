@@ -12,12 +12,12 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as AsyncMutex;
 
-use vava_coding::{CodingSession, ProjectContext, SessionStore, SessionSummary};
-use vava_core::ModelClient;
+use vava_coding::{CodingSession, ProjectContext, SessionId, SessionStore, SessionSummary};
+use vava_core::{Message, ModelClient};
 use vava_deepseek::{DeepSeekClient, ModelConfig};
 
 use crate::errors::DesktopError;
-use crate::model::{RecentRepository, RepositoryInfo, SessionInfo};
+use crate::model::{DesktopMessage, RecentRepository, RepositoryInfo, SessionInfo, SessionView};
 
 /// How many recent repositories to keep.
 const MAX_RECENTS: usize = 10;
@@ -110,6 +110,44 @@ impl DesktopState {
         let mut recents = self.recents.lock().unwrap();
         recents.remove(Path::new(path));
     }
+
+    /// The active repository's sessions, newest first.
+    pub async fn list_sessions(&self) -> Result<Vec<SessionInfo>, DesktopError> {
+        let active = self.active.lock().await;
+        let repo = active.as_ref().ok_or(DesktopError::NoRepository)?;
+        let store =
+            SessionStore::open().map_err(|error| DesktopError::Session(error.to_string()))?;
+        let sessions = store
+            .list_for_repository(&repo.root)
+            .map_err(|error| DesktopError::Session(error.to_string()))?;
+        Ok(sessions.iter().map(session_info).collect())
+    }
+
+    /// Switch the active session to a previously persisted transcript (D3).
+    ///
+    /// Future messages are appended to the selected session's log; the
+    /// abandoned session is left untouched on disk. A running turn (D4+)
+    /// must be stopped before switching — the turn machinery lands with D4.
+    pub async fn select_session(&self, id: &str) -> Result<SessionView, DesktopError> {
+        let mut active = self.active.lock().await;
+        let repo = active.as_mut().ok_or(DesktopError::NoRepository)?;
+        let session = repo.session.as_mut().ok_or_else(no_api_key_error)?;
+        let store =
+            SessionStore::open().map_err(|error| DesktopError::Session(error.to_string()))?;
+        select_session_inner(session, &store, id)
+    }
+
+    /// Start a brand-new session for the active repository (D3).
+    ///
+    /// Equivalent to the terminal `/new`: a fresh transcript, the previous
+    /// session left untouched. Repository, project context, and file index
+    /// are preserved.
+    pub async fn new_session(&self) -> Result<SessionView, DesktopError> {
+        let mut active = self.active.lock().await;
+        let repo = active.as_mut().ok_or(DesktopError::NoRepository)?;
+        let session = repo.session.as_mut().ok_or_else(no_api_key_error)?;
+        new_session_inner(session)
+    }
 }
 
 /// The result of opening a repository: the info for React plus the session
@@ -163,6 +201,48 @@ pub fn open_repository_inner(
         context,
         session,
     })
+}
+
+/// Load a session by id and switch the active `CodingSession` to it,
+/// returning the restored transcript view.
+///
+/// Pure application logic (free of Tauri) so it is unit-testable; the
+/// caller owns the active session and any in-flight turn cancellation.
+pub fn select_session_inner(
+    session: &mut CodingSession,
+    store: &SessionStore,
+    id: &str,
+) -> Result<SessionView, DesktopError> {
+    let loaded = store
+        .load(&SessionId::new(id))
+        .map_err(|error| DesktopError::Session(error.to_string()))?;
+    let summary = loaded.summary.clone();
+    session
+        .resume_into(loaded)
+        .map_err(|error| DesktopError::Session(error.to_string()))?;
+    Ok(build_session_view(&summary, session.messages()))
+}
+
+/// Start a brand-new session on the active `CodingSession`, returning the
+/// (empty) transcript view.
+pub fn new_session_inner(session: &mut CodingSession) -> Result<SessionView, DesktopError> {
+    let summary = session
+        .begin_new_session()
+        .map_err(|error| DesktopError::Session(error.to_string()))?;
+    Ok(build_session_view(&summary, session.messages()))
+}
+
+/// The IPC view of a loaded session: summary plus converted transcript.
+fn build_session_view(summary: &SessionSummary, messages: &[Message]) -> SessionView {
+    SessionView {
+        session: session_info(summary),
+        messages: messages.iter().map(DesktopMessage::from).collect(),
+    }
+}
+
+/// The user-facing error when no model client is available.
+fn no_api_key_error() -> DesktopError {
+    DesktopError::Configuration("DeepSeek API key is not configured.".into())
 }
 
 /// Build the IPC view of a repository and its sessions.
@@ -579,5 +659,72 @@ mod tests {
                 .exists
         );
         assert!(!list.iter().find(|r| r.path == missing_path).unwrap().exists);
+    }
+
+    #[test]
+    fn select_session_restores_the_transcript() {
+        let repo = TestDir::new();
+        std::fs::create_dir_all(repo.child(".git")).unwrap();
+        let (store, _dir) = test_store();
+
+        // A session with a saved conversation.
+        let saved = store.create(repo.path()).unwrap();
+        saved.append(&user("fix the tests")).unwrap();
+        saved
+            .append(&Message::Assistant(vava_core::AssistantMessage::new(
+                "done",
+            )))
+            .unwrap();
+
+        // The active session (as opened by the desktop) starts elsewhere.
+        let mut session =
+            CodingSession::open_with_store(Arc::new(FakeClient), repo.path(), store.clone())
+                .unwrap();
+
+        let view = select_session_inner(&mut session, &store, saved.id().as_str()).unwrap();
+        assert_eq!(view.session.id, saved.id().as_str());
+        assert_eq!(
+            view.session.first_user_message.as_deref(),
+            Some("fix the tests")
+        );
+        assert_eq!(view.messages.len(), 2);
+        assert!(matches!(view.messages[0], DesktopMessage::User { .. }));
+        assert!(matches!(view.messages[1], DesktopMessage::Assistant { .. }));
+        // Future messages now append to the selected session.
+        assert_eq!(session.session_id(), saved.id());
+    }
+
+    #[test]
+    fn select_session_with_unknown_id_is_a_session_error() {
+        let repo = TestDir::new();
+        std::fs::create_dir_all(repo.child(".git")).unwrap();
+        let (store, _dir) = test_store();
+        let mut session =
+            CodingSession::open_with_store(Arc::new(FakeClient), repo.path(), store.clone())
+                .unwrap();
+
+        let err = select_session_inner(&mut session, &store, "does-not-exist").unwrap_err();
+        assert!(matches!(err, DesktopError::Session(_)));
+    }
+
+    #[test]
+    fn new_session_starts_fresh_and_preserves_the_repository() {
+        let repo = TestDir::new();
+        std::fs::create_dir_all(repo.child(".git")).unwrap();
+        let (store, _dir) = test_store();
+
+        let mut session =
+            CodingSession::open_with_store(Arc::new(FakeClient), repo.path(), store.clone())
+                .unwrap();
+        // Use the opened session, then switch to a fresh one.
+        let first_id = session.session_id().as_str().to_string();
+        let view = new_session_inner(&mut session).unwrap();
+
+        assert_ne!(view.session.id, first_id);
+        assert!(view.messages.is_empty());
+        // Repository context is preserved.
+        assert_eq!(session.root(), repo.path());
+        // The previous session still exists in the store.
+        assert!(store.load(&SessionId::new(first_id)).is_ok());
     }
 }

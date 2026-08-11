@@ -30,6 +30,9 @@ pub fn run() {
             commands::active_repository,
             commands::list_recent_repositories,
             commands::remove_recent_repository,
+            commands::list_sessions,
+            commands::select_session,
+            commands::new_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running vava desktop");

@@ -39,10 +39,11 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
-use vava_coding::CodingSession;
+use vava_coding::{CodingSession, SessionSummary};
 use vava_core::{AgentError, AgentEvent};
 
 use crate::render::Renderer;
+use crate::session_ui::{self, PickResult};
 
 /// Maximum scrollback lines kept in memory.
 const MAX_SCROLLBACK: usize = 10_000;
@@ -133,14 +134,66 @@ fn handle_key(
             if active.is_some() {
                 return false; // ignore input while busy
             }
-            let prompt = state.input.trim().to_string();
+            let input = state.input.trim().to_string();
             state.input.clear();
-            if prompt.is_empty() {
+            if input.is_empty() {
                 return false;
             }
-            if matches!(prompt.as_str(), "quit" | "exit") {
-                return true;
+
+            // Session picker mode: interpret the line as a number or prefix.
+            if let Some(sessions) = state.pick.take() {
+                return handle_pick(&input, &sessions, state, session);
             }
+
+            match input.as_str() {
+                "/new" => {
+                    let Some(session) = session.as_mut() else {
+                        return false;
+                    };
+                    match session.begin_new_session() {
+                        Ok(summary) => {
+                            state.status = format!("Started new session {}", summary.id.short());
+                            state.lines.clear();
+                            state.pending.clear();
+                            state.scroll_top = 0;
+                            state.follow_bottom = true;
+                        }
+                        Err(error) => state.status = format!("error: {error}"),
+                    }
+                    return false;
+                }
+                "/session" => {
+                    let Some(session) = session.as_ref() else {
+                        return false;
+                    };
+                    for line in session_ui::info_lines(session) {
+                        state.lines.push(line);
+                    }
+                    return false;
+                }
+                "/resume" => {
+                    let Some(session) = session.as_ref() else {
+                        return false;
+                    };
+                    match session.session_store().list_for_repository(session.root()) {
+                        Ok(sessions) if sessions.is_empty() => {
+                            state.status = "No sessions found for this repository.".into();
+                        }
+                        Ok(sessions) => {
+                            for line in session_ui::listing_lines(&sessions, session.root()) {
+                                state.lines.push(line);
+                            }
+                            state.status = "Select session (number or id):".into();
+                            state.pick = Some(sessions);
+                        }
+                        Err(error) => state.status = format!("error: {error}"),
+                    }
+                    return false;
+                }
+                "quit" | "exit" => return true,
+                _ => {}
+            }
+
             let Some(mut session) = session.take() else {
                 return false;
             };
@@ -149,7 +202,7 @@ fn handle_key(
             let (event_tx, event_rx) = mpsc::channel(64);
             let (session_tx, session_rx) = oneshot::channel();
             tokio::spawn(async move {
-                let result = session.prompt(prompt, event_tx, token_for_task).await;
+                let result = session.prompt(input, event_tx, token_for_task).await;
                 let _ = session_tx.send((session, result));
             });
             state.begin_turn();
@@ -172,6 +225,42 @@ fn handle_key(
     false
 }
 
+/// Resolve one line of session-picker input inside the TUI: load the
+/// chosen session into the running one, or report the outcome.
+fn handle_pick(
+    input: &str,
+    sessions: &[SessionSummary],
+    state: &mut TuiState,
+    session: &mut Option<CodingSession>,
+) -> bool {
+    match session_ui::choose_session(input, sessions) {
+        PickResult::Picked(summary) => {
+            let Some(session) = session.as_mut() else {
+                return false;
+            };
+            match session.session_store().load(&summary.id) {
+                Ok(loaded) => match session.resume_into(loaded) {
+                    Ok(()) => state.status = format!("Switched to {}", summary.id.short()),
+                    Err(error) => state.status = format!("error: {error}"),
+                },
+                Err(error) => state.status = format!("error: {error}"),
+            }
+        }
+        PickResult::Cancelled => state.status = "No session selected.".into(),
+        PickResult::Ambiguous(matches) => {
+            state.status = "Session prefix is ambiguous.".into();
+            for summary in matches {
+                state.lines.push(format!(
+                    "  {}  {:?}",
+                    summary.id.short(),
+                    summary.first_user_message.as_deref().unwrap_or("")
+                ));
+            }
+        }
+    }
+    false
+}
+
 /// The TUI's view state.
 struct TuiState {
     model: String,
@@ -189,6 +278,8 @@ struct TuiState {
     status: String,
     /// Whether a turn is in flight.
     busy: bool,
+    /// Session picker state: the listed sessions while awaiting a choice.
+    pick: Option<Vec<SessionSummary>>,
 }
 
 impl TuiState {
@@ -203,6 +294,7 @@ impl TuiState {
             scroll_top: 0,
             status: String::new(),
             busy: false,
+            pick: None,
         }
     }
 

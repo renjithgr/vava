@@ -9,6 +9,7 @@ description = "Turns the generic vava agent into a coding agent: repository root
 vava-core = { path = "../vava-core" }
 vava-deepseek = { path = "../vava-deepseek" }
 async-trait.workspace = true
+chrono.workspace = true
 dirs.workspace = true
 serde.workspace = true
 serde_json.workspace = true

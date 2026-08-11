@@ -20,7 +20,10 @@ pub mod session;
 pub mod tools;
 
 pub use context::{ContextError, ProjectContext, find_repo_root, load_agents_md};
-pub use persistence::{PersistError, SessionHeader, SessionLog, SessionStore};
+pub use persistence::{
+    LoadedSession, PersistError, PrefixMatch, SessionHeader, SessionId, SessionLog, SessionStore,
+    SessionSummary, resolve_prefix,
+};
 pub use prompt::system_prompt;
 pub use session::{CodingSession, SessionError};
 pub use tools::{PathError, resolve_within_root};

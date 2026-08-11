@@ -493,6 +493,93 @@ async fn client_error_aborts_the_turn() {
     assert_eq!(harness.messages().len(), 1);
 }
 
+/// A restored harness starts with the persisted transcript, serves it to
+/// the model on the next call, and never re-emits it through the sink.
+#[tokio::test]
+async fn restored_harness_continues_the_persisted_transcript() {
+    struct CapturingModel {
+        seen: std::sync::Mutex<Vec<Message>>,
+    }
+
+    #[async_trait]
+    impl ModelClient for CapturingModel {
+        async fn stream(
+            &self,
+            messages: &[Message],
+            _system: &str,
+            _tools: &[ToolDefinition],
+        ) -> Result<BoxStream<'static, Result<ModelEvent, BoxedError>>, BoxedError> {
+            *self.seen.lock().unwrap() = messages.to_vec();
+            let events = vec![
+                ModelEvent::TextDelta("continuing".into()),
+                ModelEvent::Finished,
+            ];
+            Ok(Box::pin(stream::iter(events.into_iter().map(Ok))))
+        }
+    }
+
+    // The persisted transcript: user, assistant with reasoning + a tool
+    // call, tool result, assistant final response.
+    let restored = vec![
+        Message::User(UserMessage {
+            content: "find the bug".into(),
+        }),
+        Message::Assistant(AssistantMessage {
+            content: String::new(),
+            reasoning_content: Some("let me inspect".into()),
+            tool_calls: vec![vava_core::ToolCall::new("call_1", "read")],
+        }),
+        Message::ToolResult(vava_core::ToolResultMessage {
+            tool_call_id: "call_1".into(),
+            tool_name: "read".into(),
+            content: "fn main() {}".into(),
+            is_error: false,
+        }),
+        Message::Assistant(AssistantMessage::with_reasoning("found it", "done")),
+    ];
+
+    let model = Arc::new(CapturingModel {
+        seen: std::sync::Mutex::new(Vec::new()),
+    });
+    let model_for_stream: Arc<dyn ModelClient> = model.clone();
+    let mut harness = AgentHarness::restored(
+        model_for_stream,
+        ToolRegistry::new(),
+        "You are a coding agent.",
+        PathBuf::from("/tmp"),
+        restored.clone(),
+    );
+
+    // The restored transcript is the live transcript.
+    assert_eq!(harness.messages(), &restored[..]);
+
+    // A sink installed after restore sees only new messages.
+    let sink_seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink_for_harness = sink_seen.clone();
+    harness.set_message_sink(move |message| sink_for_harness.lock().unwrap().push(message.clone()));
+
+    let (harness, _, result) = run_prompt(harness, "continue from here").await;
+    result.unwrap();
+
+    // The model received the restored transcript plus the new prompt, in
+    // order, nothing lost.
+    let seen = model.seen.lock().unwrap().clone();
+    let mut expected = restored.clone();
+    expected.push(Message::User(UserMessage {
+        content: "continue from here".into(),
+    }));
+    assert_eq!(seen, expected);
+
+    // The transcript kept everything and appended the new turn.
+    assert_eq!(harness.messages().len(), restored.len() + 2);
+
+    // The sink saw exactly the two new records, not the restored ones.
+    let sunk = sink_seen.lock().unwrap().clone();
+    assert_eq!(sunk.len(), 2);
+    assert!(matches!(&sunk[0], Message::User(u) if u.content == "continue from here"));
+    assert!(matches!(&sunk[1], Message::Assistant(a) if a.content == "continuing"));
+}
+
 // ------------------------------------------------------------------ helpers
 
 /// The full event list for one scripted tool-call turn.

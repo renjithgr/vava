@@ -28,20 +28,20 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 14 of 14 — Ratatui TUI — complete. All milestones done.**
+**Milestone 15 of 15 — session resume & session management — complete.**
 
-Implemented:
+Sessions are now actually usable day to day:
 
-- `vava --tui` enters a full-screen Ratatui frontend: title bar with the
-  model, a scrollable conversation panel, and an input line
-- The TUI reuses the exact print-mode rendering (same `Renderer`, events
-  buffered into the scrollback), so the core architecture is untouched
-- Ctrl-C cancels a running turn; Ctrl-C while idle exits; `quit`/`exit`
-  work too; `↑`/`↓`/`PageUp`/`PageDown` scroll
-- Terminal state (raw mode, alternate screen) is restored on every exit
-  path via a drop guard
+- `vava -c` continues the most recent session of the current repository
+- `vava -r` lists the repository's sessions and resumes the one you pick
+- `vava --resume <id>` resumes a specific session (full id or prefix)
+- inside the REPL and TUI: `/new`, `/resume`, and `/session`
+- sessions are scoped to a stable hash of the canonicalized repository
+  root; sessions written before scoping are still found
+- resuming restores the complete transcript, reasoning content and tool
+  calls included, so DeepSeek can pick up where you left off
 
-The first usable release scenario works end to end:
+Workflows:
 
 ```bash
 cd some-rust-project
@@ -50,11 +50,56 @@ vava -p "Run the tests, identify the failure, fix it, and run the tests again."
 ```
 
 with progress streaming to the terminal through `bash`, `read`, `edit`,
-`bash`, then a final response — in print, REPL, or TUI mode.
+`bash`, then a final response — in print, REPL, or TUI mode. Later, from
+the same repository, `vava -c` restores the previous conversation.
 
-**All 14 milestones complete.** The first usable release works end to end:
-print mode (`-p`), the REPL (`vava` with no prompt), and the Ratatui TUI
-(`vava --tui`). See [Roadmap](#roadmap) for the completed list.
+## Sessions
+
+vava persists every conversation as an append-only JSONL log. Sessions are
+scoped to the repository they belong to, so leaving a repository and coming
+back later lets you continue right where you stopped.
+
+```bash
+# Start (or continue) an interactive session
+vava
+
+# Continue the most recent session of this repository
+vava -c
+vava --continue
+
+# List this repository's sessions and pick one
+vava -r
+vava --resume
+
+# Resume a specific session (full id or a unique prefix)
+vava --resume 01KABC
+```
+
+Resume modes are mutually exclusive and cannot be combined with a one-shot
+prompt (`vava -c --resume …` and `vava -p "…" --resume` are rejected).
+`vava -c -p "…"` is allowed: continue the latest session and run that one
+prompt.
+
+Inside the interactive REPL and the TUI:
+
+```text
+/new        start a fresh session for the same repository
+/resume     list this repository's sessions and switch to one
+/session    show the current session's metadata
+```
+
+When vava resumes a session it restores the complete transcript — user
+messages, assistant messages, reasoning content, tool calls, and tool
+results — so the model can continue the task with full context. Sessions
+are stored under the platform data directory:
+
+```text
+~/.local/share/vava/sessions/<repo-hash>/<session-id>.jsonl
+```
+
+where `<repo-hash>` is a stable hash of the canonicalized repository root.
+Sessions written before repository scoping (flat files with a `cwd`
+header) are still found and listed for their original repository.
 
 ## Installation
 
@@ -86,9 +131,13 @@ vava -p "Explain this repository"
 
 # Prompt in a specific directory
 vava --cwd /path/to/repo -p "Run the tests and fix them"
+
+# Continue the previous conversation
+vava -c
 ```
 
-An interactive REPL (`vava` with no prompt) is planned for a later milestone.
+With no prompt, `vava` opens an interactive REPL; `vava --tui` opens the
+full-screen Ratatui frontend.
 
 ## Architecture
 
@@ -144,7 +193,7 @@ Key rules:
   carries `#[serde]` annotations tuned to the DeepSeek wire format. The
   core's serde shape is the *persistence* format (JSONL session logs).
 - `AgentEvent` is the only channel between the harness and any frontend.
-  The print CLI, the REPL, and the future Ratatui TUI all consume the same
+  The print CLI, the REPL, and the Ratatui TUI all consume the same
   events. The harness never prints.
 - `reasoning_content` is a first-class part of assistant messages: it
   survives streaming, tool-call loops, persistence, and restoration, because
@@ -204,9 +253,11 @@ Implemented:
 - [x] **M12** Improved CLI rendering (debug/verbose reasoning output)
 - [x] **M13** Interactive REPL (`vava` with no prompt)
 - [x] **M14** Ratatui TUI consuming the same `AgentEvent` stream
+- [x] **M15** Session resume & session management (`-c`, `-r`, `--resume`,
+      `/new`, `/resume`, `/session`, repository-scoped sessions)
 
 Deliberately out of scope for v1: OpenAI/Anthropic/OpenRouter support, OAuth,
 databases, web servers, multi-provider abstractions, context compaction,
-session resume/branching, image input, permission prompts, LSP/tree-sitter
-aware tools. The architecture leaves room for these, but they are not built
-speculatively.
+session branching, session deletion UI, image input, permission prompts,
+LSP/tree-sitter aware tools. The architecture leaves room for these, but
+they are not built speculatively.

@@ -66,6 +66,30 @@ impl AgentHarness {
         }
     }
 
+    /// Build a harness whose transcript starts from previously persisted
+    /// messages (session resume).
+    ///
+    /// The restored messages are the conversation history and are served to
+    /// the model on the next call; they are *not* re-emitted through the
+    /// message sink (they are already in the log). New messages recorded
+    /// after this point are appended as usual.
+    pub fn restored(
+        client: Arc<dyn ModelClient>,
+        tools: ToolRegistry,
+        system_prompt: impl Into<String>,
+        root: PathBuf,
+        messages: Vec<Message>,
+    ) -> Self {
+        Self {
+            client,
+            messages,
+            tools,
+            system_prompt: system_prompt.into(),
+            root,
+            message_sink: None,
+        }
+    }
+
     /// Notify a callback for every completed transcript message.
     ///
     /// Used by `CodingSession` to append each message to the session log as

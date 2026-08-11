@@ -291,8 +291,16 @@ async fn coding_session_discovers_root_and_agmd() {
         ],
     ]);
     let client: Arc<dyn ModelClient> = Arc::new(model);
-    let mut session =
-        vava_coding::CodingSession::open(client, &repo.path().join("nested/deep")).unwrap();
+    // Use an explicit temporary store so tests never touch the real
+    // session store in the user's home directory.
+    let store_dir = TempRepo::new();
+    let store = vava_coding::SessionStore::open_at(store_dir.path().to_path_buf()).unwrap();
+    let mut session = vava_coding::CodingSession::open_with_store(
+        client,
+        &repo.path().join("nested/deep"),
+        store,
+    )
+    .unwrap();
 
     // The session root is the repository root, not the nested directory.
     assert_eq!(session.root(), repo.path());

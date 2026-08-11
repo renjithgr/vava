@@ -14,6 +14,7 @@ vava-core = { path = "../vava-core" }
 vava-coding = { path = "../vava-coding" }
 vava-deepseek = { path = "../vava-deepseek" }
 anyhow.workspace = true
+chrono.workspace = true
 clap.workspace = true
 crossterm.workspace = true
 ratatui.workspace = true

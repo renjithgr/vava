@@ -290,7 +290,7 @@ Implemented:
 - [x] **D2** Repository opening, recent repositories
 - [x] **D3** Sessions: list, select, new, resume
 - [x] **D4** Prompt execution with live streaming
-- [ ] **D5** Tool cards (read/write/edit/bash)
+- [x] **D5** Tool cards (read/write/edit/bash)
 - [ ] **D6** Cancellation
 - [ ] **D7** Diffs and the Changes panel
 - [ ] **D8** `@file` completion

@@ -461,60 +461,208 @@ button.small {
   overflow-y: auto;
 }
 
-/* tool calls (D3 minimal; D5 replaces with cards) */
+/* tool cards (D5) */
 
-.tool-calls {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
+.tool-card {
+  max-width: 760px;
+  margin: 0 auto 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  overflow: hidden;
 }
 
-.tool-call {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
-  font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+.tool-card-ok {
+  border-left: 3px solid var(--ok);
 }
 
-.tool-call-name {
-  color: var(--accent);
+.tool-card-error {
+  border-left: 3px solid var(--danger);
+}
+
+.tool-card-running {
+  border-left: 3px solid var(--accent);
+}
+
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 
-.tool-call-args {
+.tool-card-status {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+}
+
+.tool-card-ok .tool-card-status {
+  color: var(--ok);
+}
+
+.tool-card-error .tool-card-status {
+  color: var(--danger);
+}
+
+.tool-card-running .tool-card-status {
+  color: var(--accent);
+  animation: caret-blink 1s steps(2, start) infinite;
+}
+
+.tool-card-title {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--text-dim);
+}
+
+.tool-card-meta {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.tool-card-counts {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.tool-card-counts .added {
+  color: var(--ok);
+}
+
+.tool-card-counts .removed {
+  color: var(--danger);
+}
+
+.tool-card-body {
+  padding: 2px 12px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 420px;
 }
 
-.tool-call-result {
-  flex-basis: 100%;
-  margin: 2px 0 0;
-  padding: 6px 10px;
-  background: var(--bg-panel);
+.tool-card-command {
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.dim {
+  color: var(--text-dim);
+  font-family: inherit;
+}
+
+.tool-card-running {
+  padding: 0 12px 10px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.tool-card-expand {
+  border-top: 1px solid var(--border);
+}
+
+.tool-card-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: left;
+}
+
+.tool-card-toggle:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.tool-card-caret {
+  font-size: 10px;
+}
+
+.tool-card-output {
+  padding: 8px 12px 12px;
+}
+
+.tool-card-output pre {
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: pre-wrap;
   word-wrap: break-word;
-  max-height: 140px;
+  max-height: 320px;
   overflow-y: auto;
 }
 
-.tool-call-result-error {
-  border-color: rgba(255, 107, 107, 0.4);
-  color: var(--danger);
+.tool-card-stream {
+  margin: 6px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
 }
 
-.tool-call-working {
-  color: var(--text-dim);
-  font-style: italic;
+.tool-card-stream-error {
+  border-color: rgba(255, 107, 107, 0.4);
+}
+
+.tool-card-args {
+  margin: 0 12px 10px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* diff preview (D5; replaced by the Rust-computed unified diff in D7) */
+
+.diff {
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.diff-line {
+  white-space: pre;
+}
+
+.diff-removed {
+  color: var(--danger);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+.diff-added {
+  color: var(--ok);
+  background: rgba(76, 217, 100, 0.08);
 }
 
 .message-streaming {
@@ -579,33 +727,4 @@ button.small {
   flex: 0 0 auto;
   min-width: 84px;
   padding: 10px 18px;
-}
-
-.message-tool {
-  margin-left: 24px;
-}
-
-.tool-result-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ok);
-  margin-bottom: 4px;
-}
-
-.tool-result-error {
-  color: var(--danger);
-}
-
-.tool-result-content {
-  margin: 0;
-  padding: 8px 12px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  max-height: 220px;
-  overflow-y: auto;
 }

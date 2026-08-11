@@ -20,6 +20,10 @@ use crate::message::{AssistantMessage, Message, ToolCall, ToolResultMessage, Use
 use crate::model_client::ModelClient;
 use crate::tool::{ToolContext, ToolRegistry, ToolResult};
 
+/// A synchronous callback invoked for every completed transcript message
+/// (used by `CodingSession` for JSONL persistence).
+pub type MessageSink = Box<dyn Fn(&Message) + Send + Sync>;
+
 /// Runs the agent conversation: transcript, model calls, tool execution.
 ///
 /// The conversation flow:
@@ -41,6 +45,9 @@ pub struct AgentHarness {
     /// The workspace boundary handed to tools via [`ToolContext`].
     root: PathBuf,
     cancellation: CancellationToken,
+    /// Optional callback receiving a copy of every completed transcript
+    /// message (used by `CodingSession` for JSONL persistence).
+    message_sink: Option<MessageSink>,
 }
 
 impl AgentHarness {
@@ -57,7 +64,24 @@ impl AgentHarness {
             system_prompt: system_prompt.into(),
             root,
             cancellation: CancellationToken::new(),
+            message_sink: None,
         }
+    }
+
+    /// Notify a callback for every completed transcript message.
+    ///
+    /// Used by `CodingSession` to append each message to the session log as
+    /// it completes. The callback runs synchronously and must be cheap.
+    pub fn set_message_sink(&mut self, sink: impl Fn(&Message) + Send + Sync + 'static) {
+        self.message_sink = Some(Box::new(sink));
+    }
+
+    /// Record a completed message: notify the sink, then store it.
+    fn record(&mut self, message: Message) {
+        if let Some(sink) = &self.message_sink {
+            sink(&message);
+        }
+        self.messages.push(message);
     }
 
     /// The conversation transcript so far.
@@ -93,8 +117,7 @@ impl AgentHarness {
         if self.cancellation.is_cancelled() {
             return Err(AgentError::Cancelled);
         }
-        self.messages
-            .push(Message::User(UserMessage { content: input }));
+        self.record(Message::User(UserMessage { content: input }));
         let _ = event_tx.send(AgentEvent::TurnStarted).await;
 
         loop {
@@ -110,7 +133,7 @@ impl AgentHarness {
                 }
             };
 
-            self.messages.push(Message::Assistant(assistant.clone()));
+            self.record(Message::Assistant(assistant.clone()));
             let _ = event_tx
                 .send(AgentEvent::AssistantMessageCompleted {
                     message: assistant.clone(),
@@ -216,10 +239,9 @@ impl AgentHarness {
                     result: result.clone(),
                 })
                 .await;
-            self.messages
-                .push(Message::ToolResult(ToolResultMessage::from_call(
-                    call, result,
-                )));
+            self.record(Message::ToolResult(ToolResultMessage::from_call(
+                call, result,
+            )));
         }
         Ok(())
     }

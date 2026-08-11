@@ -28,26 +28,27 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 10 of 14 — `CodingSession` — complete.**
+**Milestone 11 of 14 — JSONL session persistence — complete.**
 
 Implemented:
 
-- Repository root discovery: nearest ancestor with a `.git` entry (dir or
-  file, so worktrees/submodules work) or the supplied directory — Git not
-  required
-- `AGENTS.md` loading; injected into the system prompt as project
-  instructions
-- `CodingSession`: binds one repository to a harness — discovers root,
-  loads instructions, builds the prompt, registers the coding tools;
-  exposes `prompt`, `messages`, `cancel`, `cancellation_token`
-- The CLI now uses `CodingSession`; the temporary inline system prompt is
-  gone
-- 13 new tests: root discovery (nested, nearest-wins, git-file, no-repo),
-  AGENTS.md loading, prompt shape, and an end-to-end session test that
-  discovers the root from a nested dir and runs tools against it
+- `SessionStore` / `SessionLog`: append-only JSONL logs under the platform
+  data dir (`~/.local/share/vava/sessions/` on Linux, `~/Library/Application
+  Support/vava/sessions/` on macOS)
+- Header record `{"type":"session","id":...,"cwd":...}`; message records
+  reuse the core serde representation, so `reasoning_content` survives by
+  construction
+- `CodingSession` wires a message sink into the harness: every completed
+  message is appended synchronously as it happens (tiny write + flush)
+- Replay reconstructs the transcript, tolerates a truncated final line
+  (crash mid-write), and reports corruption of middle records; `list`
+  enumerates sessions for the future `--resume`
+- 9 new tests: header shape, append/replay round trips, reasoning
+  survival, truncated-final-line tolerance, corruption detection, missing
+  sessions, listing, exact JSONL format, and a live session replay that
+  matches the transcript
 
-Not yet implemented: session persistence (JSONL), improved rendering, the
-REPL. See [Roadmap](#roadmap).
+Not yet implemented: improved rendering, the REPL. See [Roadmap](#roadmap).
 
 ## Installation
 
@@ -193,10 +194,10 @@ Implemented:
 - [x] **M8** `write`, `edit`, `bash` tools; a real coding task works
 - [x] **M9** `AgentHarness` with cancellation
 - [x] **M10** `CodingSession`: repository root, `AGENTS.md`, system prompt
+- [x] **M11** JSONL session persistence (`~/.local/share/vava/sessions/`)
 
 Planned, in order:
 
-- [ ] **M11** JSONL session persistence (`~/.local/share/vava/sessions/`)
 - [ ] **M12** Improved CLI rendering (debug/verbose reasoning output)
 - [ ] **M13** Interactive REPL (`vava` with no prompt)
 - [ ] **M14** Ratatui TUI consuming the same `AgentEvent` stream

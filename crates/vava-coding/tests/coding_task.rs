@@ -305,3 +305,53 @@ async fn coding_session_discovers_root_and_agmd() {
     assert!(!tool_result.is_error, "{}", tool_result.content);
     assert!(tool_result.content.contains("hello from the repo"));
 }
+
+/// The session log is append-only JSONL: after a prompt, replaying the log
+/// reconstructs the transcript exactly, reasoning content included.
+#[tokio::test]
+async fn session_is_persisted_and_replays() {
+    let repo = TempRepo::new();
+    std::fs::write(repo.path().join("notes.txt"), "hello\n").unwrap();
+
+    let model = ScriptedModel::new(vec![
+        tool_turn("c1", "bash", r#"{"command":"grep -c hello notes.txt"}"#),
+        vec![
+            ModelEvent::ReasoningDelta("Confirmed.".into()),
+            ModelEvent::TextDelta("All good.".into()),
+            ModelEvent::Finished,
+        ],
+    ]);
+
+    let store_dir = TempRepo::new(); // reuse the unique-dir machinery
+    let store = vava_coding::SessionStore::open_at(store_dir.path().to_path_buf()).unwrap();
+    let client: Arc<dyn ModelClient> = Arc::new(model);
+    let mut session =
+        vava_coding::CodingSession::open_with_store(client, repo.path(), store).unwrap();
+
+    let (tx, mut rx) = mpsc::channel(64);
+    session.prompt("check the notes".into(), tx).await.unwrap();
+    while rx.recv().await.is_some() {}
+
+    // Replay the log and compare to the live transcript.
+    let (header, replayed) = session
+        .session_store()
+        .open_session(session.session_id())
+        .unwrap();
+    assert_eq!(header.cwd, repo.path().to_str().unwrap());
+    assert_eq!(replayed, session.messages());
+    assert!(replayed.len() >= 3);
+
+    // Reasoning survived persistence through a tool loop.
+    let Message::Assistant(first) = &replayed[1] else {
+        panic!("expected assistant message");
+    };
+    assert_eq!(first.tool_calls.len(), 1);
+    let Message::Assistant(final_message) = &replayed[3] else {
+        panic!("expected final assistant message");
+    };
+    assert_eq!(final_message.content, "All good.");
+    assert_eq!(
+        final_message.reasoning_content.as_deref(),
+        Some("Confirmed.")
+    );
+}

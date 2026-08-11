@@ -28,32 +28,30 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 5 of 14 — workspace, core types, DeepSeek types, SSE parser, tools, and the agent loop — complete.**
+**Milestone 6 of 14 — the real DeepSeek client — complete.**
 
 Implemented:
 
-- Cargo workspace with four crates (`vava-core`, `vava-deepseek`,
-  `vava-coding`, `vava-cli`) mirroring the four conceptual layers
-- Provider-independent conversation types: `Message`, `UserMessage`,
-  `AssistantMessage`, `ToolCall`, `ToolResultMessage`, `ToolDefinition`
-- `reasoning_content` treated as a first-class part of assistant messages
-  (it survives streaming, tool loops, and serialization by design)
-- Typed events: `ModelEvent` (streaming model output) and `AgentEvent`
-  (the contract between the agent and any frontend)
-- Core error types: `ToolError`, `AgentError`, `Cancelled`
-- DeepSeek request serialization, response types, `ModelConfig`
-- SSE parser: `SseParser` framing, payload interpretation, `ChunkTranslator`
-- `DeepSeekError`: SSE, protocol, cancellation
-- Tool layer: `Tool` trait, `ToolContext`, `ToolRegistry`, `parse_tool_args`
-- Agent loop: `AgentHarness` (transcript, model turns, tool execution,
-  streaming `AgentEvent`s, cancellation) over the small `ModelClient` seam
-- `AssistantBuilder`: accumulates stream deltas into complete messages,
-  parsing tool-call arguments only when complete
-- Unit tests plus fixture-based SSE tests and fake-model integration tests
-  proving `model → tool → result → model → final answer` end to end,
-  including reasoning survival and cancellation
+- `DeepSeekClient`: reqwest-based HTTP client (model, thinking mode, base
+  URL from `ModelConfig`; API key via `secrecy::SecretString`; never logged
+  or shown in `Debug`), implements the `ModelClient` seam
+- SSE response → `ModelEvent` stream: `SseParser` framing → payload
+  interpretation → `ChunkTranslator`, with a guaranteed trailing `Finished`
+- Typed API errors: `Http`, `Api { status, message }`, `Sse`, `Protocol`
+- A real CLI (`vava -p "say hello"` works): clap flags `-p/--prompt`,
+  `--cwd`, `--model`, `--thinking`, `--no-thinking`, `--debug`;
+  `DEEPSEEK_API_KEY`; Ctrl-C cancels the in-flight turn
+- A text `Renderer` consuming `AgentEvent`s (reasoning hidden unless
+  `--debug`)
+- Mock-server integration tests: the client streams events end to end over
+  a real HTTP connection, the wire request is asserted (Authorization
+  header carries the key, the body never does), API errors and malformed
+  payloads are typed
 
-Not yet implemented: the DeepSeek HTTP client, the coding tools, the CLI,
+`vava -p "say hello"` is now fully functional against the real API.
+
+Not yet implemented: the coding tools (`read`/`write`/`edit`/`bash`),
+`AgentHarness` cancellation propagation into tools, `CodingSession`,
 session persistence. See [Roadmap](#roadmap).
 
 ## Installation
@@ -195,10 +193,10 @@ Implemented:
 - [x] **M3** SSE streaming parser (fixture-based tests)
 - [x] **M4** `Tool` trait and `ToolRegistry` (fake tools first)
 - [x] **M5** Agent/tool-call loop against a fake model
+- [x] **M6** Real DeepSeek client — `vava -p "say hello"` works
 
 Planned, in order:
 
-- [ ] **M6** Real DeepSeek client — `vava -p "say hello"` works
 - [ ] **M7** `read` tool
 - [ ] **M8** `write`, `edit`, `bash` tools; a real coding task works
 - [ ] **M9** `AgentHarness` with cancellation

@@ -10,4 +10,12 @@ name = "vava"
 path = "src/main.rs"
 
 [dependencies]
-vava-coding = { path = "../vava-coding" }
+vava-core = { path = "../vava-core" }
+vava-deepseek = { path = "../vava-deepseek" }
+anyhow.workspace = true
+clap.workspace = true
+secrecy.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

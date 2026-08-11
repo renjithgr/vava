@@ -1,10 +1,13 @@
-//! The `vava` binary.
-//!
-//! Milestone 1: a placeholder so the binary name exists and the workspace
-//! builds end to end. The real CLI (clap arguments, event rendering, REPL)
-//! arrives in later milestones.
+//! The `vava` binary: parse arguments and run the CLI.
 
-fn main() {
-    // Replaced in a later milestone by the real CLI.
-    println!("vava: not implemented yet (Milestone 1 — workspace skeleton)");
+use clap::Parser;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init()
+        .ok();
+    let cli = vava_cli::Cli::parse();
+    vava_cli::run(cli).await
 }

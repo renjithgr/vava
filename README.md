@@ -28,7 +28,7 @@ port and supports a much smaller feature set.
 
 ## Current status
 
-**Milestone 3 of 14 — workspace skeleton, core types, DeepSeek types, and the SSE parser — complete.**
+**Milestone 4 of 14 — workspace, core types, DeepSeek types, SSE parser, and the tool layer — complete.**
 
 Implemented:
 
@@ -52,11 +52,15 @@ Implemented:
   tool calls tracked by index)
 - `DeepSeekError`: SSE, protocol, cancellation (HTTP/API variants land
   with the client)
+- Tool layer: `Tool` trait, `ToolContext` (workspace boundary +
+  cancellation), `ToolRegistry` (register, definitions, resolve, execute),
+  `parse_tool_args`
 - Unit tests plus fixture-based integration tests against two recorded
-  DeepSeek streams (`tool_turn`, `final_answer`)
+  DeepSeek streams (`tool_turn`, `final_answer`), and registry tests with
+  fake tools
 
-Not yet implemented: the DeepSeek HTTP client, the tool trait/registry,
-the agent loop, the CLI, session persistence. See [Roadmap](#roadmap).
+Not yet implemented: the DeepSeek HTTP client, the agent loop, the CLI,
+session persistence. See [Roadmap](#roadmap).
 
 ## Installation
 
@@ -195,10 +199,10 @@ Implemented:
       `ModelEvent`, `AgentEvent`, error types
 - [x] **M2** DeepSeek request serialization and response types
 - [x] **M3** SSE streaming parser (fixture-based tests)
+- [x] **M4** `Tool` trait and `ToolRegistry` (fake tools first)
 
 Planned, in order:
 
-- [ ] **M4** `Tool` trait and `ToolRegistry` (fake tools first)
 - [ ] **M5** Agent/tool-call loop against a fake model
 - [ ] **M6** Real DeepSeek client — `vava -p "say hello"` works
 - [ ] **M7** `read` tool

@@ -6,6 +6,9 @@ license.workspace = true
 description = "Provider-independent core types for the vava coding agent: messages, events, tools, agent harness."
 
 [dependencies]
+async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true

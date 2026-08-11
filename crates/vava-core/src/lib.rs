@@ -6,8 +6,8 @@
 //! - [`message`] — the conversation transcript ([`Message`]) and its parts.
 //! - [`event`]  — [`ModelEvent`] (streaming model output) and [`AgentEvent`]
 //!   (the contract between the agent and any frontend).
-//! - [`tool`]   — tool results. The tool trait and registry arrive in a
-//!   later milestone.
+//! - [`tool`]   — tool results, definitions, the [`Tool`] trait, and the
+//!   [`ToolRegistry`].
 //! - [`error`]  — typed errors raised by this layer.
 //!
 //! Nothing here knows about DeepSeek, HTTP, SSE, files, or terminals.
@@ -23,4 +23,4 @@ pub mod tool;
 pub use error::{Cancelled, ToolError};
 pub use event::{AgentEvent, ModelEvent, Usage};
 pub use message::{AssistantMessage, Message, ToolCall, ToolResultMessage, UserMessage};
-pub use tool::{ToolDefinition, ToolResult};
+pub use tool::{Tool, ToolContext, ToolDefinition, ToolRegistry, ToolResult, parse_tool_args};
